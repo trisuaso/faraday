@@ -1,0 +1,14 @@
+pub fn prompt(String message) -> String {
+    io.write(message)
+    return io.read()
+}
+
+Number input = tonumber(prompt("input number: "))
+
+if (input == 10) {
+    print("input is 10")
+} else if (input >= 20) {
+    print("input is greater than or equal to 20")
+} else {
+    print("couldn't figure out what input is")
+}

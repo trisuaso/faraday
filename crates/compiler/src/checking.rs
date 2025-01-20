@@ -365,6 +365,10 @@ impl ToLua for FunctionCall<'_> {
 }
 
 /// A standard for loop.
+///
+/// <https://www.lua.org/pil/4.3.5.html>
+///
+/// We do not support <https://www.lua.org/pil/4.3.4.html> (numeric for) at this time.
 pub struct ForLoop<'a> {
     pub pair: Pair<'a, Rule>,
 }
@@ -391,6 +395,8 @@ impl ToLua for ForLoop<'_> {
 }
 
 /// A standard while loop.
+///
+/// <https://www.lua.org/pil/4.3.2.html>
 pub struct WhileLoop<'a> {
     pub pair: Pair<'a, Rule>,
 }
@@ -411,5 +417,60 @@ impl ToLua for WhileLoop<'_> {
         }
 
         format!("while {condition} do\n{block}\nend\n")
+    }
+}
+
+/// A standard conditional (if, else, else if).
+///
+/// <https://www.lua.org/pil/4.3.1.html>
+pub struct Conditional<'a> {
+    pub pair: Pair<'a, Rule>,
+}
+
+impl ToLua for Conditional<'_> {
+    fn transform(&self) -> String {
+        let keyword = match self.pair.as_rule() {
+            Rule::conditional_else => "else",
+            Rule::conditional_elseif => "elseif",
+            _ => "if",
+        };
+
+        let mut inner = self.pair.clone().into_inner();
+
+        let mut condition: String = String::new();
+        let mut block: String = String::new();
+
+        while let Some(pair) = inner.next() {
+            let rule = pair.as_rule();
+            match rule {
+                Rule::block => block = crate::process(pair.into_inner(), Registers::default()).0,
+                Rule::conditional_else => {
+                    if block.ends_with("end\n") {
+                        // reopen block
+                        block = block[..block.len() - 4].to_string();
+                    }
+
+                    block.push_str(&Conditional { pair }.transform())
+                }
+                Rule::conditional_elseif => {
+                    if block.ends_with("end\n") {
+                        block = block[..block.len() - 4].to_string();
+                    }
+
+                    block.push_str(&Conditional { pair }.transform())
+                }
+                _ => condition = pair.as_str().to_string(),
+            }
+        }
+
+        format!(
+            "\n{keyword} {condition}{}\n{block}\n{}",
+            if keyword == "else" { "" } else { " then" },
+            if !block.ends_with("end\n") {
+                "end\n"
+            } else {
+                ""
+            }
+        )
     }
 }

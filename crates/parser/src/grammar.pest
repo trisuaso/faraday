@@ -19,11 +19,13 @@ value = _{
   | ordered_mathematical
 }
 
+primitive = _{ identifier | call | string | float | integer | boolean | ordered_comparison | ordered_mathematical }
+
 ordered_comparison = { "(" ~ comparison ~ ")" }
-comparison = { value ~ ("<" | ">" | ">=" | "<=" | "==") ~ value }
+comparison = { primitive ~ (">=" | "<=" | "<" | ">" | "==") ~ primitive }
 
 ordered_mathematical = { "(" ~ mathematical ~ ")" }
-mathematical = { value ~ ("+" | "-" | "*" | "/") ~ value }
+mathematical = { primitive ~ ("+" | "-" | "*" | "/") ~ primitive }
 
 identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]" | "$" | "#" | ",")+ }
 generic         =  { "<" ~ (identifier ~ ","?)+ ~ ">" }
@@ -50,10 +52,10 @@ COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 chunk = _{ function | type_alias | struct | for_loop | while_loop | conditional | value | block }
 
 for_loop = { "for" ~ identifier ~ "in" ~ value ~ block }
-while_loop = { "while" ~ value ~ block }
-conditional = { "if" ~ value ~ block ~ (conditional_elseif | conditional_else)* }
+while_loop = { "while" ~ primitive ~ block }
+conditional = { "if" ~ primitive ~ block ~ (conditional_elseif | conditional_else)* }
 conditional_else = { "else" ~ block }
-conditional_elseif = { "else if" ~ value ~ block }
+conditional_elseif = { "else if" ~ primitive ~ block }
 
 function_return = _{ "->" ~ type }
 sync_modifier   = { "async" | "sync" }

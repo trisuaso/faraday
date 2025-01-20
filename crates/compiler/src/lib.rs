@@ -2,7 +2,8 @@ use parser::{Pairs, Rule};
 pub mod checking;
 
 use checking::{
-    ForLoop, Function, FunctionCall, Registers, ToLua, Type, TypeVisiblity, Variable, WhileLoop,
+    Conditional, ForLoop, Function, FunctionCall, Registers, ToLua, Type, TypeVisiblity, Variable,
+    WhileLoop,
 };
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
 
@@ -71,6 +72,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             }
             Rule::for_loop => lua_out.push_str(&ForLoop { pair }.transform()),
             Rule::while_loop => lua_out.push_str(&WhileLoop { pair }.transform()),
+            Rule::conditional => lua_out.push_str(&Conditional { pair }.transform()),
             _ => lua_out.push_str(&(pair.as_str().to_string() + "\n")),
         }
     }
