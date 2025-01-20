@@ -1,0 +1,52 @@
+document = { SOI ~ (chunk)* ~ EOI }
+
+pair  =  { type_modifier? ~ type ~ identifier ~ "=" ~ chunk }
+key   = @{ identifier | string | ("[" ~ int ~ "]") }
+item  =  { key ~ "=" ~ value }
+table =  { "{" ~ (item ~ ","?)* ~ "}" }
+
+value = _{
+    string
+  | float
+  | integer
+  | boolean
+  | pair
+  | item
+  | table
+  | identifier
+}
+
+identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]")+ }
+generic         =  { "<" ~ (identifier ~ ","?)+ ~ ">" }
+type            =  { identifier ~ generic? }
+typed_parameter =  { type ~ identifier }
+type_modifier   =  { "pub" | "prv" }
+
+string = @{ "\"" ~ inner ~ "\"" }
+inner  = @{ (!("\"" | "\\" | "\u{0000}" | "\u{001F}") ~ ANY)* ~ (escape ~ inner)? }
+
+escape = @{ "\\" ~ ("b" | "t" | "n" | "f" | "r" | "\"" | "\\" | NEWLINE)? }
+
+integer = @{ ("+" | "-")? ~ int }
+float   = @{ ("+" | "-")? ~ int ~ ("." ~ digits ~ exp? | exp)? }
+int     = @{ "0" | (ASCII_NONZERO_DIGIT ~ digits?) }
+digits  = @{ (ASCII_DIGIT | ("_" ~ ASCII_DIGIT))+ }
+exp     = @{ ("E" | "e") ~ ("+" | "-")? ~ int }
+
+boolean = { "true" | "false" }
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
+
+chunk = _{ function | type_alias | struct | call | value | block }
+
+function_return = _{ "->" ~ type }
+function        =  { type_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
+call            =  { identifier ~ "(" ~ (chunk ~ ","?)* ~ ")" }
+block           =  { "{" ~ chunk* ~ "}" }
+
+struct       = { "struct" ~ type ~ struct_block }
+struct_type  = { type_modifier ~ type ~ identifier ~ ";" }
+struct_block = { "{" ~ struct_type* ~ "}" }
+
+type_alias = { type_modifier? ~ "type" ~ identifier ~ "=" ~ type }

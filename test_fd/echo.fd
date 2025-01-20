@@ -1,0 +1,18 @@
+pub fn echo(Table<i32, String> inputs) -> String {
+    fn echo1(Table<i32, String> inputs) -> String {
+        inputs[2] = "deep nesting"
+        return inputs
+    }
+
+    return echo1(inputs)
+}
+
+String abcd = "abcd"
+pub String public_abcd = "abcdPUBLIC"
+
+Table<i32, String> output = echo({
+    [0] = abcd,
+    [1] = public_abcd
+})
+
+print(output[0], output[1], output[2])
