@@ -92,7 +92,7 @@ impl ToLua for Function {
         if self.execution == ExecutionType::Async {
             // async coroutine function
             format!(
-                "{}{} = coroutine.create(function ({})\n    {}\nend)\n",
+                "{}{} = function ({})\n   return coroutine.create(function ()\n    {}\nend)\nend\n",
                 self.visibility.to_string(),
                 self.name,
                 self.args_string(),
@@ -355,9 +355,9 @@ impl ToLua for FunctionCall<'_> {
         }
 
         if is_async {
-            lua_out.push_str(&format!("coroutine.resume({ident}, {args}) "));
+            lua_out.push_str(&format!("select(2, coroutine.resume({ident}({args})))\n"));
         } else {
-            lua_out.push_str(&format!("{ident}({args}) "));
+            lua_out.push_str(&format!("{ident}({args})\n"));
         }
 
         lua_out
