@@ -1,0 +1,6 @@
+async fn async_echo(String input) -> String {
+    return input
+}
+
+String result = #async_echo("abcd")
+print(result)

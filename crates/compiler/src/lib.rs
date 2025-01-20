@@ -1,7 +1,9 @@
 use parser::{Pairs, Rule};
 mod checking;
 
-use checking::{Function, Registers, ToLua, Type, TypeVisiblity, Variable};
+use checking::{
+    ExecutionType, Function, FunctionCall, Registers, ToLua, Type, TypeVisiblity, Variable,
+};
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
 
 /// Generate a Lua output from the given parser output
@@ -19,6 +21,7 @@ pub fn process(input: ParserPairs) -> (String, Registers) {
                 let mut types: Vec<Type> = Vec::new();
                 let mut return_type: Type = Type::default();
                 let mut visibility: TypeVisiblity = TypeVisiblity::Private;
+                let mut execution: ExecutionType = ExecutionType::Sync;
 
                 while let Some(pair) = inner.next() {
                     let rule = pair.as_rule();
@@ -26,9 +29,8 @@ pub fn process(input: ParserPairs) -> (String, Registers) {
                         Rule::identifier => {
                             name = pair.as_str().to_string();
                         }
-                        Rule::type_modifier => {
-                            visibility = pair.into();
-                        }
+                        Rule::type_modifier => visibility = pair.into(),
+                        Rule::sync_modifier => execution = pair.into(),
                         Rule::typed_parameter => {
                             let mut inner = pair.into_inner();
                             // it's safe to unwrap here because the grammar REQUIRES
@@ -45,6 +47,7 @@ pub fn process(input: ParserPairs) -> (String, Registers) {
                                 return_type,
                                 body: process(pair.into_inner()).0,
                                 visibility,
+                                execution,
                             };
 
                             lua_out.push_str(&function.transform());
@@ -84,6 +87,7 @@ pub fn process(input: ParserPairs) -> (String, Registers) {
                                     // process blocks before using as value
                                     Rule::block => process(pair.into_inner()).0,
                                     // everything else just needs to be stringified
+                                    Rule::call => FunctionCall { pair }.transform(),
                                     _ => pair.as_str().to_string(),
                                 },
                                 visibility,
@@ -95,6 +99,9 @@ pub fn process(input: ParserPairs) -> (String, Registers) {
                         }
                     }
                 }
+            }
+            Rule::call => {
+                lua_out.push_str(&FunctionCall { pair }.transform());
             }
             _ => lua_out.push_str(&(pair.as_str().to_string() + " ")),
         }

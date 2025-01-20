@@ -6,7 +6,7 @@ pub trait ToLua {
     fn transform(&self) -> String;
 }
 
-/// Compiler state registers
+/// Compiler state registers.
 #[derive(Serialize, Deserialize)]
 pub struct Registers {
     pub types: BTreeMap<String, Type>,
@@ -24,7 +24,7 @@ impl Default for Registers {
     }
 }
 
-/// The parameter supplied to a function during creation
+/// The parameter supplied to a function during creation.
 #[derive(Serialize, Deserialize)]
 pub struct FunctionArguments {
     pub keys: Vec<String>,
@@ -32,7 +32,7 @@ pub struct FunctionArguments {
 }
 
 impl FunctionArguments {
-    /// Get the idenfitier and required type of a function parameter by its index
+    /// Get the idenfitier and required type of a function parameter by its index.
     pub fn get(&self, index: usize) -> Option<(&String, &Type)> {
         if let Some(value) = self.keys.get(index) {
             return Some((value, self.types.get(index).unwrap()));
@@ -42,7 +42,25 @@ impl FunctionArguments {
     }
 }
 
-/// A typed function definition
+/// Async/sync modifiers for [`Function`]s.
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+pub enum ExecutionType {
+    /// <https://www.lua.org/pil/9.1.html>
+    Async,
+    Sync,
+}
+
+impl From<Pair<'_, Rule>> for ExecutionType {
+    fn from(value: Pair<Rule>) -> Self {
+        match value.as_str() {
+            "async" => ExecutionType::Async,
+            "sync" => ExecutionType::Sync,
+            _ => unreachable!("reached impossible execution type value"),
+        }
+    }
+}
+
+/// A typed function definition.
 #[derive(Serialize, Deserialize)]
 pub struct Function {
     pub name: String,
@@ -50,12 +68,12 @@ pub struct Function {
     pub return_type: Type,
     pub body: String,
     pub visibility: TypeVisiblity,
+    pub execution: ExecutionType,
 }
 
-impl ToLua for Function {
-    fn transform(&self) -> String {
-        let mut lua_out: String = format!("{}function ", self.visibility.to_string());
-        lua_out.push_str(&format!("{}(", self.name));
+impl Function {
+    pub fn args_string(&self) -> String {
+        let mut lua_out: String = String::new();
 
         for (i, param) in self.arguments.keys.clone().iter().enumerate() {
             if i != self.arguments.keys.len() - 1 {
@@ -65,11 +83,35 @@ impl ToLua for Function {
             }
         }
 
-        format!("{lua_out})\n    {}\nend\n", self.body)
+        lua_out
     }
 }
 
-/// A variable binding
+impl ToLua for Function {
+    fn transform(&self) -> String {
+        if self.execution == ExecutionType::Async {
+            // async coroutine function
+            format!(
+                "{}{} = coroutine.create(function ({})\n    {}\nend)\n",
+                self.visibility.to_string(),
+                self.name,
+                self.args_string(),
+                self.body
+            )
+        } else {
+            // regular, sync function
+            format!(
+                "{}function {}({})\n    {}\nend\n",
+                self.visibility.to_string(),
+                self.name,
+                self.args_string(),
+                self.body
+            )
+        }
+    }
+}
+
+/// A variable binding.
 #[derive(Serialize, Deserialize)]
 pub struct Variable {
     pub name: String,
@@ -84,7 +126,7 @@ impl ToLua for Variable {
     }
 }
 
-/// A simple type structure
+/// A simple type structure.
 #[derive(Serialize, Deserialize)]
 pub struct Type {
     pub ident: String,
@@ -135,7 +177,7 @@ impl ToLua for Type {
     }
 }
 
-/// The visibility of a type (<https://www.lua.org/pil/14.2.html>)
+/// The visibility of a type (<https://www.lua.org/pil/14.2.html>).
 #[derive(Serialize, Deserialize)]
 pub enum TypeVisiblity {
     Public,
@@ -158,5 +200,47 @@ impl Display for TypeVisiblity {
             Self::Public => "",
             Self::Private => "local ",
         })
+    }
+}
+
+/// A call to a stored function.
+#[derive(Serialize)]
+pub struct FunctionCall<'a> {
+    pub pair: Pair<'a, Rule>,
+}
+
+impl ToLua for FunctionCall<'_> {
+    fn transform(&self) -> String {
+        let mut lua_out: String = String::new();
+        let mut inner = self.pair.clone().into_inner();
+
+        let mut ident: String = String::new();
+        let mut args: String = String::new();
+        let mut is_async: bool = false;
+
+        while let Some(pair) = inner.next() {
+            let rule = pair.as_rule();
+            match rule {
+                Rule::identifier => {
+                    if ident.is_empty() {
+                        let string = pair.as_str().to_string();
+                        is_async = string.starts_with("#");
+                        ident = string.replacen("#", "", 1)
+                    } else {
+                        args.push_str(pair.as_str());
+                    }
+                }
+                Rule::block => args.push_str(&crate::process(pair.into_inner()).0),
+                _ => args.push_str(pair.as_str()),
+            }
+        }
+
+        if is_async {
+            lua_out.push_str(&format!("coroutine.resume({ident}, {args}) "));
+        } else {
+            lua_out.push_str(&format!("{ident}({args}) "));
+        }
+
+        lua_out
     }
 }

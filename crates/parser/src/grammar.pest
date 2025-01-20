@@ -6,7 +6,8 @@ item  =  { key ~ "=" ~ value }
 table =  { "{" ~ (item ~ ","?)* ~ "}" }
 
 value = _{
-    string
+    call
+  | string
   | float
   | integer
   | boolean
@@ -16,7 +17,7 @@ value = _{
   | identifier
 }
 
-identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]")+ }
+identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]" | "$" | "#")+ }
 generic         =  { "<" ~ (identifier ~ ","?)+ ~ ">" }
 type            =  { identifier ~ generic? }
 typed_parameter =  { type ~ identifier }
@@ -38,12 +39,13 @@ boolean = { "true" | "false" }
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
-chunk = _{ function | type_alias | struct | call | value | block }
+chunk = _{ function | type_alias | struct | value | block }
 
 function_return = _{ "->" ~ type }
-function        =  { type_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
-call            =  { identifier ~ "(" ~ (chunk ~ ","?)* ~ ")" }
-block           =  { "{" ~ chunk* ~ "}" }
+sync_modifier   = { "async" | "sync" }
+function        = { type_modifier? ~ sync_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
+call            = { identifier ~ "(" ~ (chunk ~ ","?)* ~ ")" }
+block           = { "{" ~ chunk* ~ "}" }
 
 struct       = { "struct" ~ type ~ struct_block }
 struct_type  = { type_modifier ~ type ~ identifier ~ ";" }
