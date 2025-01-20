@@ -1,4 +1,4 @@
-use compiler::process;
+use compiler::{checking::Registers, process};
 use parser::FaradayParser;
 use parser::Parser;
 
@@ -25,7 +25,7 @@ fn main() {
             // write file
             write(&output_json, s.to_json()).unwrap();
 
-            let lua = process(s.next().unwrap().into_inner());
+            let lua = process(s.next().unwrap().into_inner(), Registers::default());
             write(&output, lua.0).unwrap();
             write(
                 &output_state_json,

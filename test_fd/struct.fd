@@ -1,0 +1,14 @@
+struct TestStruct {
+    String field;
+}
+
+// special function which will set the metatable of TestStruct
+pub fn TestStruct:new(String field) -> TestStruct {
+    self.field = field
+}
+
+pub fn TestStruct:echo_field() -> String {
+    return self.field
+}
+
+print(TestStruct:new("Hello, world!"):echo_field())

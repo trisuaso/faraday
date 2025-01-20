@@ -1,65 +1,24 @@
 use parser::{Pairs, Rule};
-mod checking;
+pub mod checking;
 
 use checking::{
-    ExecutionType, Function, FunctionCall, Registers, ToLua, Type, TypeVisiblity, Variable,
+    ForLoop, Function, FunctionCall, Registers, ToLua, Type, TypeVisiblity, Variable, WhileLoop,
 };
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
 
 /// Generate a Lua output from the given parser output
-pub fn process(input: ParserPairs) -> (String, Registers) {
+pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registers) {
     let mut lua_out = String::new();
-    let mut registers = Registers::default();
 
     for pair in input {
         match pair.as_rule() {
             Rule::function => {
-                let mut inner = pair.into_inner();
-
-                let mut name = String::new();
-                let mut keys: Vec<String> = Vec::new();
-                let mut types: Vec<Type> = Vec::new();
-                let mut return_type: Type = Type::default();
-                let mut visibility: TypeVisiblity = TypeVisiblity::Private;
-                let mut execution: ExecutionType = ExecutionType::Sync;
-
-                while let Some(pair) = inner.next() {
-                    let rule = pair.as_rule();
-                    match rule {
-                        Rule::identifier => {
-                            name = pair.as_str().to_string();
-                        }
-                        Rule::type_modifier => visibility = pair.into(),
-                        Rule::sync_modifier => execution = pair.into(),
-                        Rule::typed_parameter => {
-                            let mut inner = pair.into_inner();
-                            // it's safe to unwrap here because the grammar REQUIRES
-                            // a type definition for arguments
-                            types.push(inner.next().unwrap().into());
-                            keys.push(inner.next().unwrap().as_str().to_string());
-                        }
-                        Rule::r#type => return_type = pair.into(),
-                        Rule::block => {
-                            // function body, end processing here
-                            let function = Function {
-                                name: name.clone(),
-                                arguments: checking::FunctionArguments { keys, types },
-                                return_type,
-                                body: process(pair.into_inner()).0,
-                                visibility,
-                                execution,
-                            };
-
-                            lua_out.push_str(&function.transform());
-                            registers.functions.insert(name, function);
-                            break; // functions can only have ONE block
-                        }
-                        _ => unreachable!("reached impossible rule in function processing"),
-                    }
-                }
+                let function: Function = pair.into();
+                lua_out.push_str(&function.transform());
+                registers.functions.insert(function.name.clone(), function);
             }
             Rule::block => {
-                lua_out.push_str(&process(pair.into_inner()).0);
+                lua_out.push_str(&process(pair.into_inner(), Registers::default()).0);
             }
             Rule::pair => {
                 let mut inner = pair.into_inner();
@@ -85,7 +44,9 @@ pub fn process(input: ParserPairs) -> (String, Registers) {
                                 r#type,
                                 value: match rule {
                                     // process blocks before using as value
-                                    Rule::block => process(pair.into_inner()).0,
+                                    Rule::block => {
+                                        process(pair.into_inner(), Registers::default()).0
+                                    }
                                     // everything else just needs to be stringified
                                     Rule::call => FunctionCall { pair }.transform(),
                                     _ => pair.as_str().to_string(),
@@ -103,7 +64,14 @@ pub fn process(input: ParserPairs) -> (String, Registers) {
             Rule::call => {
                 lua_out.push_str(&FunctionCall { pair }.transform());
             }
-            _ => lua_out.push_str(&(pair.as_str().to_string() + " ")),
+            Rule::r#struct => {
+                let t = Type::from(pair);
+                lua_out.push_str(&t.transform());
+                registers.types.insert(t.ident.clone(), t);
+            }
+            Rule::for_loop => lua_out.push_str(&ForLoop { pair }.transform()),
+            Rule::while_loop => lua_out.push_str(&WhileLoop { pair }.transform()),
+            _ => lua_out.push_str(&(pair.as_str().to_string() + "\n")),
         }
     }
 

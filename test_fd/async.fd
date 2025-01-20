@@ -1,4 +1,5 @@
 async fn async_echo(String input) -> String {
+    print("Async function run!")
     return input
 }
 

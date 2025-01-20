@@ -15,9 +15,17 @@ value = _{
   | item
   | table
   | identifier
+  | ordered_comparison
+  | ordered_mathematical
 }
 
-identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]" | "$" | "#")+ }
+ordered_comparison = { "(" ~ comparison ~ ")" }
+comparison = { value ~ ("<" | ">" | ">=" | "<=" | "==") ~ value }
+
+ordered_mathematical = { "(" ~ mathematical ~ ")" }
+mathematical = { value ~ ("+" | "-" | "*" | "/") ~ value }
+
+identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]" | "$" | "#" | ",")+ }
 generic         =  { "<" ~ (identifier ~ ","?)+ ~ ">" }
 type            =  { identifier ~ generic? }
 typed_parameter =  { type ~ identifier }
@@ -39,7 +47,13 @@ boolean = { "true" | "false" }
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
-chunk = _{ function | type_alias | struct | value | block }
+chunk = _{ function | type_alias | struct | for_loop | while_loop | conditional | value | block }
+
+for_loop = { "for" ~ identifier ~ "in" ~ value ~ block }
+while_loop = { "while" ~ value ~ block }
+conditional = { "if" ~ value ~ block ~ (conditional_elseif | conditional_else)* }
+conditional_else = { "else" ~ block }
+conditional_elseif = { "else if" ~ value ~ block }
 
 function_return = _{ "->" ~ type }
 sync_modifier   = { "async" | "sync" }
@@ -48,7 +62,7 @@ call            = { identifier ~ "(" ~ (chunk ~ ","?)* ~ ")" }
 block           = { "{" ~ chunk* ~ "}" }
 
 struct       = { "struct" ~ type ~ struct_block }
-struct_type  = { type_modifier ~ type ~ identifier ~ ";" }
+struct_type  = { type_modifier? ~ type ~ identifier ~ ";" }
 struct_block = { "{" ~ struct_type* ~ "}" }
 
 type_alias = { type_modifier? ~ "type" ~ identifier ~ "=" ~ type }

@@ -111,6 +111,68 @@ impl ToLua for Function {
     }
 }
 
+impl From<Pair<'_, Rule>> for Function {
+    fn from(value: Pair<'_, Rule>) -> Self {
+        let mut inner = value.into_inner();
+
+        let mut name = String::new();
+        let mut keys: Vec<String> = Vec::new();
+        let mut types: Vec<Type> = Vec::new();
+        let mut return_type: Type = Type::default();
+        let mut visibility: TypeVisiblity = TypeVisiblity::Private;
+        let mut execution: ExecutionType = ExecutionType::Sync;
+        let mut body: String = String::new();
+
+        while let Some(pair) = inner.next() {
+            let rule = pair.as_rule();
+            match rule {
+                Rule::identifier => {
+                    name = pair.as_str().to_string();
+                }
+                Rule::type_modifier => visibility = pair.into(),
+                Rule::sync_modifier => execution = pair.into(),
+                Rule::typed_parameter => {
+                    let mut inner = pair.into_inner();
+                    // it's safe to unwrap here because the grammar REQUIRES
+                    // a type definition for arguments
+                    types.push(inner.next().unwrap().into());
+                    keys.push(inner.next().unwrap().as_str().to_string());
+                }
+                Rule::r#type => return_type = pair.into(),
+                Rule::block => body = crate::process(pair.into_inner(), Registers::default()).0,
+                _ => unreachable!("reached impossible rule in function processing"),
+            }
+        }
+
+        // special function names
+        let mut name_association_split = name.split(":");
+
+        let struct_name = name_association_split.next().unwrap_or("");
+        let true_name = name_association_split.next().unwrap_or(&name);
+
+        if true_name == "new" {
+            // imitate class
+            body = format!(
+                "{struct_name}.__index = {struct_name}
+local self = {{}}
+setmetatable(self, {struct_name})
+{body}
+return self"
+            )
+        }
+
+        // ...
+        Function {
+            name: name.clone(),
+            arguments: FunctionArguments { keys, types },
+            return_type,
+            body,
+            visibility,
+            execution,
+        }
+    }
+}
+
 /// A variable binding.
 #[derive(Serialize, Deserialize)]
 pub struct Variable {
@@ -126,11 +188,22 @@ impl ToLua for Variable {
     }
 }
 
+/// A simple structure representing a field of a struct.
+#[derive(Serialize, Deserialize)]
+pub struct StructField {
+    pub ident: String,
+    pub r#type: Type,
+    pub visibility: TypeVisiblity,
+}
+
 /// A simple type structure.
 #[derive(Serialize, Deserialize)]
 pub struct Type {
     pub ident: String,
     pub generics: Vec<String>,
+    /// Registered fields on a type. Empty for regular types; populated for structs.
+    pub properties: BTreeMap<String, StructField>,
+    pub visibility: TypeVisiblity,
 }
 
 impl From<Pair<'_, Rule>> for Type {
@@ -138,11 +211,13 @@ impl From<Pair<'_, Rule>> for Type {
         let inner = value.into_inner();
         let mut generics: Vec<String> = Vec::new();
         let mut ident: String = String::new();
+        let mut properties: BTreeMap<String, StructField> = BTreeMap::new();
+        let mut visibility: TypeVisiblity = TypeVisiblity::Private;
 
         for pair in inner {
             let rule = pair.as_rule();
             match rule {
-                parser::Rule::generic => {
+                Rule::generic => {
                     let inner = pair.into_inner();
 
                     for pair in inner {
@@ -153,12 +228,53 @@ impl From<Pair<'_, Rule>> for Type {
                         generics.push(pair.as_str().to_string())
                     }
                 }
-                parser::Rule::identifier => ident = pair.as_str().to_string(),
+                Rule::type_modifier => visibility = pair.into(),
+                Rule::identifier => ident = pair.as_str().to_string(),
+                Rule::r#type => ident = pair.into_inner().next().unwrap().as_str().to_string(),
+                Rule::struct_block => {
+                    let mut inner = pair.into_inner();
+                    while let Some(pair) = inner.next() {
+                        let rule = pair.as_rule();
+                        match rule {
+                            Rule::struct_type => {
+                                // last layer
+                                let mut ident: String = String::new();
+                                let mut r#type: Type = Type::default();
+                                let mut visibility: TypeVisiblity = TypeVisiblity::Private;
+
+                                let mut inner = pair.into_inner();
+                                while let Some(pair) = inner.next() {
+                                    let rule = pair.as_rule();
+                                    match rule {
+                                        Rule::type_modifier => visibility = pair.into(),
+                                        Rule::r#type => r#type = pair.into(),
+                                        Rule::identifier => ident = pair.as_str().to_string(),
+                                        _ => unreachable!("reached impossible rule in struct type"),
+                                    }
+                                }
+
+                                if !ident.is_empty() {
+                                    properties.insert(ident.clone(), StructField {
+                                        ident,
+                                        r#type,
+                                        visibility,
+                                    });
+                                }
+                            }
+                            _ => unreachable!("reached impossible rule in struct block"),
+                        }
+                    }
+                }
                 _ => unreachable!("reached impossible rule in type processing"),
             }
         }
 
-        Self { generics, ident }
+        Self {
+            generics,
+            ident,
+            properties,
+            visibility,
+        }
     }
 }
 
@@ -167,13 +283,15 @@ impl Default for Type {
         Self {
             ident: String::new(),
             generics: Vec::new(),
+            properties: BTreeMap::new(),
+            visibility: TypeVisiblity::Private,
         }
     }
 }
 
 impl ToLua for Type {
     fn transform(&self) -> String {
-        String::new()
+        format!("{}{} = {{}}\n", self.visibility, self.ident)
     }
 }
 
@@ -204,7 +322,6 @@ impl Display for TypeVisiblity {
 }
 
 /// A call to a stored function.
-#[derive(Serialize)]
 pub struct FunctionCall<'a> {
     pub pair: Pair<'a, Rule>,
 }
@@ -230,7 +347,9 @@ impl ToLua for FunctionCall<'_> {
                         args.push_str(pair.as_str());
                     }
                 }
-                Rule::block => args.push_str(&crate::process(pair.into_inner()).0),
+                Rule::block => {
+                    args.push_str(&crate::process(pair.into_inner(), Registers::default()).0)
+                }
                 _ => args.push_str(pair.as_str()),
             }
         }
@@ -242,5 +361,55 @@ impl ToLua for FunctionCall<'_> {
         }
 
         lua_out
+    }
+}
+
+/// A standard for loop.
+pub struct ForLoop<'a> {
+    pub pair: Pair<'a, Rule>,
+}
+
+impl ToLua for ForLoop<'_> {
+    fn transform(&self) -> String {
+        let mut inner = self.pair.clone().into_inner();
+
+        let mut ident: String = String::new();
+        let mut iterator: String = String::new();
+        let mut block: String = String::new();
+
+        while let Some(pair) = inner.next() {
+            let rule = pair.as_rule();
+            match rule {
+                Rule::identifier => ident = pair.as_str().to_string(),
+                Rule::block => block = crate::process(pair.into_inner(), Registers::default()).0,
+                _ => iterator = pair.as_str().to_string(),
+            }
+        }
+
+        format!("for {ident} in {iterator} do\n{block}\nend\n")
+    }
+}
+
+/// A standard while loop.
+pub struct WhileLoop<'a> {
+    pub pair: Pair<'a, Rule>,
+}
+
+impl ToLua for WhileLoop<'_> {
+    fn transform(&self) -> String {
+        let mut inner = self.pair.clone().into_inner();
+
+        let mut condition: String = String::new();
+        let mut block: String = String::new();
+
+        while let Some(pair) = inner.next() {
+            let rule = pair.as_rule();
+            match rule {
+                Rule::block => block = crate::process(pair.into_inner(), Registers::default()).0,
+                _ => condition = pair.as_str().to_string(),
+            }
+        }
+
+        format!("while {condition} do\n{block}\nend\n")
     }
 }
