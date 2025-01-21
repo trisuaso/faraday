@@ -35,9 +35,9 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 lua_out.push_str(&t.transform());
                 registers.types.insert(t.ident.clone(), t);
             }
-            Rule::for_loop => lua_out.push_str(&ForLoop { pair }.transform()),
-            Rule::while_loop => lua_out.push_str(&WhileLoop { pair }.transform()),
-            Rule::conditional => lua_out.push_str(&Conditional { pair }.transform()),
+            Rule::for_loop => lua_out.push_str(&ForLoop::from(pair).transform()),
+            Rule::while_loop => lua_out.push_str(&WhileLoop::from(pair).transform()),
+            Rule::conditional => lua_out.push_str(&Conditional::from(pair).transform()),
             _ => lua_out.push_str(&(pair.as_str().to_string() + "\n")),
         }
     }
