@@ -1,10 +1,13 @@
 use parser::{Pairs, Rule};
-pub mod checking;
 
-use checking::{
-    Conditional, ForLoop, Function, FunctionCall, Registers, ToLua, Type, TypeVisiblity, Variable,
-    WhileLoop,
+pub mod checking;
+pub mod data;
+
+use checking::{Registers, ToLua};
+use data::{
+    Conditional, ForLoop, Function, FunctionCall, Type, TypeVisiblity, Variable, WhileLoop,
 };
+
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
 
 /// Generate a Lua output from the given parser output
@@ -49,7 +52,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                                         process(pair.into_inner(), Registers::default()).0
                                     }
                                     // everything else just needs to be stringified
-                                    Rule::call => FunctionCall { pair }.transform(),
+                                    Rule::call => FunctionCall::from(pair).transform(),
                                     _ => pair.as_str().to_string(),
                                 },
                                 visibility,
@@ -63,7 +66,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 }
             }
             Rule::call => {
-                lua_out.push_str(&FunctionCall { pair }.transform());
+                lua_out.push_str(&FunctionCall::from(pair).transform());
             }
             Rule::r#struct => {
                 let t = Type::from(pair);
