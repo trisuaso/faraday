@@ -1,16 +1,16 @@
-Table<Number, String> array = {
+Table<number string> array = {
     [0] = "Hello, world!",
     [1] = "Hello, world! 1"
 }
 
-for i,v in ipairs(array) {
+for (i,v) in ipairs(array) {
     print(i, v)
 }
 
-Number a = 0
-Number max = 10
+number a = 0
+number max = 10
 
 while (a < max) {
     a = (a + 1)
-    print(a)
+    print(tostring(a))
 }

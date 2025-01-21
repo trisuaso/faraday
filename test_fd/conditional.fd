@@ -1,9 +1,9 @@
-pub fn prompt(String message) -> String {
+pub fn prompt(string message) -> string {
     io.write(message)
     return io.read()
 }
 
-Number input = tonumber(prompt("input number: "))
+number input = tonumber(prompt("input number: "))
 
 if (input == 10) {
     print("input is 10")

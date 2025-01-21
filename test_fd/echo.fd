@@ -1,5 +1,5 @@
-pub fn echo(Table<i32, String> inputs) -> String {
-    fn echo1(Table<i32, String> inputs) -> String {
+pub fn echo(Table<number string> inputs) -> string {
+    fn echo1(Table<number string> inputs) -> string {
         inputs[2] = "deep nesting"
         return inputs
     }
@@ -7,10 +7,10 @@ pub fn echo(Table<i32, String> inputs) -> String {
     return echo1(inputs)
 }
 
-String abcd = "abcd"
-pub String public_abcd = "abcdPUBLIC"
+string abcd = "abcd"
+pub string public_abcd = "abcdPUBLIC"
 
-Table<i32, String> output = echo({
+Table<number string> output = echo({
     [0] = abcd,
     [1] = public_abcd
 })

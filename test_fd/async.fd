@@ -1,10 +1,11 @@
-async fn async_echo(String input) -> String {
+async fn async_echo(string input) -> string {
     print("Async function run!")
     return input
 }
 
-String result = #async_echo("abcd")
+string result = #async_echo("abcd")
 print(result)
 
-String result1 = #async_echo("abcd 12345")
+string result1 = #async_echo("abcd 12345")
+// string result1 = #async_echo(12345)
 print(result1)

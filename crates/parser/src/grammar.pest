@@ -27,7 +27,7 @@ comparison = { primitive ~ (">=" | "<=" | "<" | ">" | "==") ~ primitive }
 ordered_mathematical = { "(" ~ mathematical ~ ")" }
 mathematical = { primitive ~ ("+" | "-" | "*" | "/") ~ primitive }
 
-identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]" | "$" | "#" | ",")+ }
+identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]" | "$" | "#")+ }
 generic         =  { "<" ~ (identifier ~ ","?)+ ~ ">" }
 type            =  { identifier ~ generic? }
 typed_parameter =  { type ~ identifier }
@@ -51,7 +51,7 @@ COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
 chunk = _{ function | type_alias | struct | for_loop | while_loop | conditional | value | block }
 
-for_loop = { "for" ~ identifier ~ "in" ~ value ~ block }
+for_loop = { "for" ~ "(" ~ (identifier ~ ","?)* ~ ")" ~ "in" ~ value ~ block }
 while_loop = { "while" ~ primitive ~ block }
 conditional = { "if" ~ primitive ~ block ~ (conditional_elseif | conditional_else)* }
 conditional_else = { "else" ~ block }

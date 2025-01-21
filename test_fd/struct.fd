@@ -1,13 +1,14 @@
 struct TestStruct {
-    String field;
+    string field;
+    string field_1;
 }
 
 // special function which will set the metatable of TestStruct
-pub fn TestStruct:new(String field) -> TestStruct {
+pub fn TestStruct:new(string field) -> TestStruct {
     self.field = field
 }
 
-pub fn TestStruct:echo_field() -> String {
+pub fn TestStruct:echo_field() -> string {
     self.field_1 = "This field was added through a method."
     return self.field
 }
