@@ -4,9 +4,7 @@ pub mod checking;
 pub mod data;
 
 use checking::{Registers, ToLua};
-use data::{
-    Conditional, ForLoop, Function, FunctionCall, Type, TypeVisiblity, Variable, WhileLoop,
-};
+use data::{Conditional, ForLoop, Function, FunctionCall, Type, Variable, WhileLoop};
 
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
 
@@ -25,45 +23,9 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 lua_out.push_str(&process(pair.into_inner(), Registers::default()).0);
             }
             Rule::pair => {
-                let mut inner = pair.into_inner();
-
-                let mut name = String::new();
-                let mut r#type = Type::default();
-                let mut visibility: TypeVisiblity = TypeVisiblity::Private;
-
-                while let Some(pair) = inner.next() {
-                    let rule = pair.as_rule();
-                    match rule {
-                        Rule::identifier => {
-                            name = pair.as_str().to_string();
-                        }
-                        Rule::type_modifier => {
-                            visibility = pair.into();
-                        }
-                        Rule::r#type => r#type = pair.into(),
-                        _ => {
-                            // function body, end processing here
-                            let variable = Variable {
-                                name: name.clone(),
-                                r#type,
-                                value: match rule {
-                                    // process blocks before using as value
-                                    Rule::block => {
-                                        process(pair.into_inner(), Registers::default()).0
-                                    }
-                                    // everything else just needs to be stringified
-                                    Rule::call => FunctionCall::from(pair).transform(),
-                                    _ => pair.as_str().to_string(),
-                                },
-                                visibility,
-                            };
-
-                            lua_out.push_str(&variable.transform());
-                            registers.variables.insert(name, variable);
-                            break; // functions can only have ONE block
-                        }
-                    }
-                }
+                let variable: Variable = pair.into();
+                lua_out.push_str(&variable.transform());
+                registers.variables.insert(variable.ident.clone(), variable);
             }
             Rule::call => {
                 lua_out.push_str(&FunctionCall::from(pair).transform());

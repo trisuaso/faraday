@@ -8,7 +8,9 @@ pub fn TestStruct:new(String field) -> TestStruct {
 }
 
 pub fn TestStruct:echo_field() -> String {
+    self.field_1 = "This field was added through a method."
     return self.field
 }
 
-print(TestStruct:new("Hello, world!"):echo_field())
+TestStruct item = TestStruct:new("Hello, world!")
+print(item:echo_field(), item.field_1)

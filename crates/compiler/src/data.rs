@@ -155,7 +155,7 @@ return self"
 /// A variable binding.
 #[derive(Serialize, Deserialize)]
 pub struct Variable {
-    pub name: String,
+    pub ident: String,
     pub r#type: Type,
     pub value: String,
     pub visibility: TypeVisiblity,
@@ -163,7 +163,47 @@ pub struct Variable {
 
 impl ToLua for Variable {
     fn transform(&self) -> String {
-        format!("{}{} = {}\n", self.visibility, self.name, self.value)
+        format!("{}{} = {}\n", self.visibility, self.ident, self.value)
+    }
+}
+
+impl From<Pair<'_, Rule>> for Variable {
+    fn from(value: Pair<'_, Rule>) -> Self {
+        let mut inner = value.into_inner();
+
+        let mut name = String::new();
+        let mut r#type = Type::default();
+        let mut value: String = String::new();
+        let mut visibility: TypeVisiblity = TypeVisiblity::Private;
+
+        while let Some(pair) = inner.next() {
+            let rule = pair.as_rule();
+            match rule {
+                Rule::identifier => {
+                    name = pair.as_str().to_string();
+                }
+                Rule::type_modifier => {
+                    visibility = pair.into();
+                }
+                Rule::r#type => r#type = pair.into(),
+                _ => {
+                    value = match rule {
+                        // process blocks before using as value
+                        Rule::block => crate::process(pair.into_inner(), Registers::default()).0,
+                        // everything else just needs to be stringified
+                        Rule::call => FunctionCall::from(pair).transform(),
+                        _ => pair.as_str().to_string(),
+                    }
+                }
+            }
+        }
+
+        Variable {
+            ident: name.clone(),
+            r#type,
+            value,
+            visibility,
+        }
     }
 }
 
@@ -325,13 +365,27 @@ impl<'a> From<Pair<'a, Rule>> for FunctionCall {
                         is_async = string.starts_with("#");
                         ident = string.replacen("#", "", 1)
                     } else {
-                        args.push_str(pair.as_str());
+                        if args.is_empty() {
+                            // first argument
+                            args.push_str(pair.as_str())
+                        } else {
+                            // nth argument
+                            args.push_str(&(", ".to_string() + pair.as_str()))
+                        }
                     }
                 }
                 Rule::block => {
                     args.push_str(&crate::process(pair.into_inner(), Registers::default()).0)
                 }
-                _ => args.push_str(pair.as_str()),
+                _ => {
+                    if args.is_empty() {
+                        // first argument
+                        args.push_str(pair.as_str())
+                    } else {
+                        // nth argument
+                        args.push_str(&(", ".to_string() + pair.as_str()))
+                    }
+                }
             }
         }
 
