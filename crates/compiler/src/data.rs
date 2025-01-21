@@ -203,6 +203,48 @@ impl From<(String, Type)> for Variable {
     }
 }
 
+impl From<Pair<'_, Rule>> for Variable {
+    fn from(value: Pair<'_, Rule>) -> Self {
+        let mut inner = value.into_inner();
+
+        let mut name = String::new();
+        let mut r#type = Type::default();
+        let mut value: String = String::new();
+        let mut visibility: TypeVisibility = TypeVisibility::Private;
+
+        while let Some(pair) = inner.next() {
+            let rule = pair.as_rule();
+            match rule {
+                Rule::identifier => {
+                    name = pair.as_str().to_string();
+                }
+                Rule::type_modifier => {
+                    visibility = pair.into();
+                }
+                Rule::r#type => r#type = pair.into(),
+                _ => {
+                    value = match rule {
+                        // process blocks before using as value
+                        Rule::block => crate::process(pair.into_inner(), Registers::default()).0,
+                        // everything else just needs to be stringified
+                        Rule::call => {
+                            fcompiler_error!("{}", "cannot do compiler call in an enum")
+                        }
+                        _ => pair.as_str().to_string(),
+                    }
+                }
+            }
+        }
+
+        Variable {
+            ident: name.clone(),
+            r#type,
+            value,
+            visibility,
+        }
+    }
+}
+
 impl From<(Pair<'_, Rule>, &Registers)> for Variable {
     fn from(value: (Pair<'_, Rule>, &Registers)) -> Self {
         let reg = value.1;
@@ -264,6 +306,7 @@ pub struct Type {
     pub generics: Vec<String>,
     /// Registered fields on a type. Empty for regular types; populated for structs.
     pub properties: BTreeMap<String, StructField>,
+    pub variants: BTreeMap<String, Variable>,
     pub visibility: TypeVisibility,
 }
 
@@ -329,6 +372,7 @@ impl From<String> for Type {
             ident: value,
             generics: Vec::new(),
             properties: BTreeMap::new(),
+            variants: BTreeMap::new(),
             visibility: TypeVisibility::Private,
         }
     }
@@ -340,6 +384,7 @@ impl From<&str> for Type {
             ident: value.to_owned(),
             generics: Vec::new(),
             properties: BTreeMap::new(),
+            variants: BTreeMap::new(),
             visibility: TypeVisibility::Private,
         }
     }
@@ -351,6 +396,7 @@ impl From<(String, TypeVisibility)> for Type {
             ident: value.0,
             generics: Vec::new(),
             properties: BTreeMap::new(),
+            variants: BTreeMap::new(),
             visibility: value.1,
         }
     }
@@ -362,6 +408,7 @@ impl From<(&str, TypeVisibility)> for Type {
             ident: value.0.to_owned(),
             generics: Vec::new(),
             properties: BTreeMap::new(),
+            variants: BTreeMap::new(),
             visibility: value.1,
         }
     }
@@ -373,6 +420,7 @@ impl From<(String, Vec<String>, TypeVisibility)> for Type {
             ident: value.0,
             generics: value.1,
             properties: BTreeMap::new(),
+            variants: BTreeMap::new(),
             visibility: value.2,
         }
     }
@@ -384,6 +432,7 @@ impl From<(&str, Vec<String>, TypeVisibility)> for Type {
             ident: value.0.to_owned(),
             generics: value.1,
             properties: BTreeMap::new(),
+            variants: BTreeMap::new(),
             visibility: value.2,
         }
     }
@@ -395,6 +444,7 @@ impl From<Pair<'_, Rule>> for Type {
         let mut generics: Vec<String> = Vec::new();
         let mut ident: String = String::new();
         let mut properties: BTreeMap<String, StructField> = BTreeMap::new();
+        let mut variants: BTreeMap<String, Variable> = BTreeMap::new();
         let mut visibility: TypeVisibility = TypeVisibility::Private;
 
         for pair in inner {
@@ -448,6 +498,13 @@ impl From<Pair<'_, Rule>> for Type {
                         }
                     }
                 }
+                Rule::enum_block => {
+                    let mut inner = pair.into_inner();
+                    while let Some(pair) = inner.next() {
+                        let var = Variable::from(pair.into_inner().next().unwrap());
+                        variants.insert(var.ident.clone(), var);
+                    }
+                }
                 _ => unreachable!("reached impossible rule in type processing"),
             }
         }
@@ -456,6 +513,7 @@ impl From<Pair<'_, Rule>> for Type {
             generics,
             ident,
             properties,
+            variants,
             visibility,
         }
     }
@@ -492,6 +550,7 @@ impl Default for Type {
             ident: String::new(),
             generics: Vec::new(),
             properties: BTreeMap::new(),
+            variants: BTreeMap::new(),
             visibility: TypeVisibility::Private,
         }
     }
@@ -499,6 +558,17 @@ impl Default for Type {
 
 impl ToLua for Type {
     fn transform(&self) -> String {
+        if !self.variants.is_empty() {
+            // enum, create with variants in table
+            let mut out = format!("{}{} = {{\n", self.visibility, self.ident);
+
+            for variant in &self.variants {
+                out.push_str(&format!("{} = {},\n", variant.0, variant.1.value));
+            }
+
+            return format!("{out}\n}}\n");
+        }
+
         format!("{}{} = {{}}\n", self.visibility, self.ident)
     }
 }

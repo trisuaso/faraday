@@ -1,0 +1,9 @@
+enum TestEnum {
+    string TestVariant = "abcd";
+}
+
+print(TestEnum.TestVariant)
+
+if (TestEnum.TestVariant == "abcd") {
+    print("TestEnum.TestVariant == \"abcd\"")
+}

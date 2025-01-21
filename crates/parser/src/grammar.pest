@@ -49,7 +49,7 @@ boolean = { "true" | "false" }
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
-chunk = _{ function | type_alias | struct | for_loop | while_loop | conditional | value | block }
+chunk = _{ function | type_alias | struct | enum | for_loop | while_loop | conditional | value | block }
 
 for_loop = { "for" ~ "(" ~ (identifier ~ ","?)* ~ ")" ~ "in" ~ value ~ block }
 while_loop = { "while" ~ primitive ~ block }
@@ -66,5 +66,9 @@ block           = { "{" ~ chunk* ~ "}" }
 struct       = { "struct" ~ type ~ struct_block }
 struct_type  = { type_modifier? ~ type ~ identifier ~ ";" }
 struct_block = { "{" ~ struct_type* ~ "}" }
+
+enum = {"enum" ~ identifier ~ enum_block}
+enum_variant  = { pair ~ ";" }
+enum_block = { "{" ~ enum_variant* ~ "}" }
 
 type_alias = { type_modifier? ~ "type" ~ identifier ~ "=" ~ type }

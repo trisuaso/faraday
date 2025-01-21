@@ -10,6 +10,7 @@ pub enum CompilerError {
     NoSuchFunction,
     NoSuchVariable,
     NoSuchProperty,
+    NoSuchVariant,
     InvalidType,
     NoSuchType,
     Unknown,
@@ -22,7 +23,8 @@ impl Display for CompilerError {
             InvalidGenericCount => "invalid generic count",
             NoSuchFunction => "no such function found in registers",
             NoSuchVariable => "no such variable found in registers",
-            NoSuchProperty => "no such property",
+            NoSuchProperty => "no such property in struct",
+            NoSuchVariant => "no such variant in enum",
             InvalidType => "invalid type for operation",
             NoSuchType => "no such type id found in registers",
             Unknown => "unknown compiler error",
@@ -129,6 +131,22 @@ impl Registers {
                     return (property.to_string(), property_type.r#type.clone()).into();
                 }
                 None => {
+                    // check variant
+                    if !expanded_type.variants.is_empty() {
+                        match expanded_type.variants.get(property) {
+                            Some(var) => {
+                                return var.to_owned();
+                            }
+                            None => {
+                                // no such property on struct
+                                fcompiler_general_error(
+                                    CompilerError::NoSuchVariant,
+                                    format!("{}.{}", var.r#type.ident, property),
+                                )
+                            }
+                        }
+                    }
+
                     // no such property on struct
                     fcompiler_general_error(
                         CompilerError::NoSuchProperty,

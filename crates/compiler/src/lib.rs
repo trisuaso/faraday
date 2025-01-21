@@ -42,6 +42,14 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                     .variables
                     .insert(t.ident.clone(), (t.ident.clone(), t).into());
             }
+            Rule::r#enum => {
+                let t = Type::from(pair);
+                lua_out.push_str(&t.transform());
+                registers.types.insert(t.ident.clone(), t.clone());
+                registers
+                    .variables
+                    .insert(t.ident.clone(), (t.ident.clone(), t).into());
+            }
             Rule::for_loop => lua_out.push_str(&ForLoop::from((pair, &registers)).transform()),
             Rule::while_loop => lua_out.push_str(&WhileLoop::from((pair, &registers)).transform()),
             Rule::conditional => {
