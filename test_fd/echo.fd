@@ -1,5 +1,5 @@
-pub fn echo(Table<number string> inputs) -> string {
-    fn echo1(Table<number string> inputs) -> string {
+pub fn echo(Table<number string> inputs) -> any {
+    fn echo1(Table<number string> inputs) -> any {
         inputs[2] = "deep nesting"
         return inputs
     }

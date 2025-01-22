@@ -1,6 +1,6 @@
 use crate::data::{Function, Type, TypeVisibility};
-use lazy_static::lazy_static;
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
 pub const TYPE_NAME_EMPTY: &str = "empty";
 pub const TYPE_NAME_ANY: &str = "any";
@@ -43,33 +43,31 @@ macro_rules! lua_builtin_fn {
     };
 }
 
-lazy_static! {
-    pub static ref TYPE_BINDINGS: BTreeMap<String, Type> = {
-        let mut map = BTreeMap::default();
+pub static TYPE_BINDINGS: LazyLock<BTreeMap<String, Type>> = LazyLock::new(|| {
+    let mut map = BTreeMap::default();
 
-        import_default_type!(TYPE_NAME_STRING >> map);
-        import_default_type!(TYPE_NAME_NUMBER >> map);
-        import_default_type!(TYPE_NAME_EMPTY >> map);
-        import_default_type!(TYPE_NAME_ANY >> map);
+    import_default_type!(TYPE_NAME_STRING >> map);
+    import_default_type!(TYPE_NAME_NUMBER >> map);
+    import_default_type!(TYPE_NAME_EMPTY >> map);
+    import_default_type!(TYPE_NAME_ANY >> map);
 
-        import_default_type!(TYPE_NAME_TABLE("K", "V") >> map);
+    import_default_type!(TYPE_NAME_TABLE("K", "V") >> map);
 
-        map
-    };
+    map
+});
 
-    pub static ref FUNCTION_BINDINGS: BTreeMap<String, Function> = {
-        let mut map = BTreeMap::default();
+pub static FUNCTION_BINDINGS: LazyLock<BTreeMap<String, Function>> = LazyLock::new(|| {
+    let mut map = BTreeMap::default();
 
-        // misc
-        lua_builtin_fn!("print"("message"; "string") -> TYPE_NAME_STRING >> map);
-        lua_builtin_fn!("tonumber"("value"; "any") -> TYPE_NAME_NUMBER >> map);
-        lua_builtin_fn!("tostring"("value"; "any") -> TYPE_NAME_STRING >> map);
+    // misc
+    lua_builtin_fn!("print"("message"; "string") -> TYPE_NAME_STRING >> map);
+    lua_builtin_fn!("tonumber"("value"; "any") -> TYPE_NAME_NUMBER >> map);
+    lua_builtin_fn!("tostring"("value"; "any") -> TYPE_NAME_STRING >> map);
 
-        // io
-        lua_builtin_fn!("io.read"("_" ; "empty") -> TYPE_NAME_EMPTY >> map);
-        lua_builtin_fn!("io.write"("message"; "string") -> TYPE_NAME_EMPTY >> map);
+    // io
+    lua_builtin_fn!("io.read"("_" ; "empty") -> TYPE_NAME_EMPTY >> map);
+    lua_builtin_fn!("io.write"("message"; "string") -> TYPE_NAME_EMPTY >> map);
 
-        // ...
-        map
-    };
-}
+    // ...
+    map
+});

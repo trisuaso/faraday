@@ -2,9 +2,9 @@
 name = "compiler"
 version = "0.1.1"
 edition = "2024"
+rust-version = "1.86"
 
 [dependencies]
-lazy_static = "1.5.0"
 parser = { path = "../parser" }
 serde = { version = "1.0.217", features = ["derive"] }
 
