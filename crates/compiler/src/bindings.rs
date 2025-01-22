@@ -15,14 +15,14 @@ macro_rules! import_default_type {
     ($type_name:ident >> $map:ident) => {
         $map.insert(
             $type_name.to_string(),
-            ($type_name, TypeVisibility::Public).into(),
+            ($type_name, TypeVisibility::Private).into(),
         );
     };
 
     ($type_name:ident($($generics:expr),+) >> $map:ident) => {
         $map.insert(
             $type_name.to_string(),
-            ($type_name, vec![$($generics.to_string()),+], TypeVisibility::Public).into(),
+            ($type_name, vec![$($generics.to_string()),+], TypeVisibility::Private).into(),
         );
     };
 }
@@ -37,7 +37,7 @@ macro_rules! lua_builtin_fn {
             },
             return_type: $crate::data::Type::from($return_type),
             body: String::new(),
-            visibility: $crate::data::TypeVisibility::Public,
+            visibility: $crate::data::TypeVisibility::Private,
             execution: $crate::data::ExecutionType::Sync,
             association: $crate::data::AssociationType::Static
         });

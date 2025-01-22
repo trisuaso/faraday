@@ -22,10 +22,10 @@ value = _{
 primitive = _{ identifier | call | string | float | integer | boolean | ordered_comparison | ordered_mathematical }
 
 ordered_comparison = { "(" ~ comparison ~ ")" }
-comparison = { primitive ~ (">=" | "<=" | "<" | ">" | "==") ~ primitive }
+comparison         = { primitive ~ (">=" | "<=" | "<" | ">" | "!=" | "==") ~ primitive }
 
 ordered_mathematical = { "(" ~ mathematical ~ ")" }
-mathematical = { primitive ~ ("+" | "-" | "*" | "/") ~ primitive }
+mathematical         = { primitive ~ ("+" | "-" | "*" | "/") ~ primitive }
 
 identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]" | "$" | "#")+ }
 generic         =  { "<" ~ (identifier ~ ","?)+ ~ ">" }
@@ -49,31 +49,33 @@ boolean = { "true" | "false" }
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
-chunk = _{ impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | value | block }
+chunk = _{ use | impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | value | block }
 
-for_loop = { "for" ~ "(" ~ (identifier ~ ","?)* ~ ")" ~ "in" ~ value ~ block }
-while_loop = { "while" ~ primitive ~ block }
-conditional = { "if" ~ primitive ~ block ~ (conditional_elseif | conditional_else)* }
-conditional_else = { "else" ~ block }
+use = { "use" ~ string ~ "as" ~ identifier }
+
+for_loop           = { "for" ~ "(" ~ (identifier ~ ","?)* ~ ")" ~ "in" ~ value ~ block }
+while_loop         = { "while" ~ primitive ~ block }
+conditional        = { "if" ~ primitive ~ block ~ (conditional_elseif | conditional_else)* }
+conditional_else   = { "else" ~ block }
 conditional_elseif = { "else if" ~ primitive ~ block }
 
 function_return = _{ "->" ~ type }
-sync_modifier   = { "async" | "sync" }
-function        = { type_modifier? ~ sync_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
-call            = { identifier ~ "(" ~ (chunk ~ ","?)* ~ ")" }
-block           = { "{" ~ chunk* ~ "}" }
+sync_modifier   =  { "async" | "sync" }
+function        =  { type_modifier? ~ sync_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
+call            =  { identifier ~ "(" ~ (chunk ~ ","?)* ~ ")" }
+block           =  { "{" ~ chunk* ~ "}" }
 
-impl = { "impl" ~ identifier ~ impl_block }
-impl_block = { "{" ~ method* ~ "}" }
+impl            = { "impl" ~ identifier ~ impl_block }
+impl_block      = { "{" ~ method* ~ "}" }
 method_modifier = { "static" | "assoc" }
-method = { method_modifier? ~ sync_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
+method          = { method_modifier? ~ sync_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
 
 struct       = { type_modifier? ~ "struct" ~ type ~ struct_block }
 struct_type  = { type_modifier? ~ type ~ identifier ~ ";" }
 struct_block = { "{" ~ struct_type* ~ "}" }
 
-enum = {"enum" ~ identifier ~ enum_block}
-enum_variant  = { pair ~ ";" }
-enum_block = { "{" ~ enum_variant* ~ "}" }
+enum         = { "enum" ~ identifier ~ enum_block }
+enum_variant = { pair ~ ";" }
+enum_block   = { "{" ~ enum_variant* ~ "}" }
 
 type_alias = { type_modifier? ~ "type" ~ type ~ "=" ~ type }

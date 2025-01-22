@@ -1,0 +1,5 @@
+use "./other" as other
+use "./nested/other" as nested
+
+other.other_function()
+nested.other_function()

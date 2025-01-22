@@ -19,9 +19,10 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "compiler"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "parser",
+ "pathbufd",
  "serde",
 ]
 
@@ -56,10 +57,11 @@ dependencies = [
 
 [[package]]
 name = "faradayc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "compiler",
  "parser",
+ "pathbufd",
  "serde",
  "serde_json",
 ]
@@ -100,10 +102,19 @@ checksum = "1261fe7e33c73b354eab43b1273a57c8f967d0391e80353e51f764ac02cf6775"
 
 [[package]]
 name = "parser"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "pest",
  "pest_derive",
+]
+
+[[package]]
+name = "pathbufd"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1093468017c416ee031afaecc90ae8a2ea3a9590c3331302fe89be4e43061d9d"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

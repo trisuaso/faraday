@@ -1,0 +1,3 @@
+pub fn other_function() -> empty {
+    print("Called function from nested other module!")
+}

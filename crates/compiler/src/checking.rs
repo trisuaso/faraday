@@ -259,9 +259,10 @@ impl MultipleTypeChecking for FunctionCall<'_> {
                 None => continue,
             };
 
-            let expanded = registers.get_type(&matching.ident);
-            if expanded != *matching {
-                fcompiler_type_error(r#type.ident.clone(), matching.ident.clone());
+            let expanded = registers.get_type(&r#type.ident);
+            let expanded_matching = registers.get_type(&matching.ident);
+            if expanded != expanded_matching {
+                fcompiler_type_error(expanded.ident.clone(), expanded_matching.ident.clone());
             } else {
                 // check generics
                 r#type.check_generics(matching.generics.clone(), registers);
