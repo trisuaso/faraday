@@ -376,15 +376,30 @@ pub struct Type {
 
 impl PartialEq for Type {
     fn eq(&self, other: &Self) -> bool {
+        // remove import var from identifiers
+        let mut split = self.ident.split(".");
+        let mut ident = split.next().unwrap();
+
+        if let Some(i) = split.next() {
+            ident = i;
+        }
+
+        let mut split = other.ident.split(".");
+        let mut other_ident = split.next().unwrap();
+
+        if let Some(i) = split.next() {
+            other_ident = i;
+        }
+
         // "any" types are always equal to anything
-        if (self.ident == "any") | (other.ident == "any") {
+        if (ident == "any") | (other_ident == "any") {
             return true;
         }
 
         // we don't need to check the visibility of types to see if they're equal
         // generics are checked through [`MultipleGenericChecking`] trait
         // (self.ident == other.ident) && (self.properties == other.properties)
-        self.ident == other.ident
+        ident == other_ident
     }
 }
 

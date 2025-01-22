@@ -248,10 +248,7 @@ impl TypeChecking for Variable {
 
 impl MultipleTypeChecking for FunctionCall<'_> {
     fn check_multiple(&self, supplied: Vec<Type>, registers: &Registers) -> () {
-        let function = match registers.functions.get(&self.ident) {
-            Some(f) => f,
-            None => fcompiler_general_error(CompilerError::NoSuchFunction, self.ident.clone()),
-        };
+        let function = registers.get_fn(&self.ident);
 
         for (i, r#type) in function.arguments.types.iter().enumerate() {
             let matching = match supplied.get(i) {

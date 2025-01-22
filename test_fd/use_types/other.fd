@@ -1,0 +1,13 @@
+pub struct OtherStruct {}
+
+impl OtherStruct {
+    static fn new() -> OtherStruct {}
+
+    fn associated_other_function() -> empty {
+        print("Associated other function called!")
+    }
+
+    static fn other_function() -> empty {
+        print("Other function from other struct called!")
+    }
+}

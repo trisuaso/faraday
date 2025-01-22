@@ -1,0 +1,8 @@
+use "./other" as other
+
+// static
+other.OtherStruct.other_function()
+
+// assoc
+other.OtherStruct s = other.OtherStruct.new()
+s:associated_other_function()
