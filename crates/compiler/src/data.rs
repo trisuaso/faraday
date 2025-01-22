@@ -293,7 +293,9 @@ impl From<(Pair<'_, Rule>, &Registers)> for Variable {
                         _ => {
                             let t = Type::from_parser_type(pair.clone(), reg);
 
-                            if t != r#type {
+                            if (t != r#type) && t.ident != TYPE_NAME_TABLE {
+                                // tables can be assigned to anything since everything
+                                // in lua is *technically* a table
                                 fcompiler_general_error(
                                     CompilerError::InvalidType,
                                     format!(

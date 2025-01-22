@@ -1,5 +1,7 @@
 use crate::{
-    bindings::{FUNCTION_BINDINGS, TYPE_BINDINGS, TYPE_NAME_STRING, TYPE_NAME_TABLE},
+    bindings::{
+        FUNCTION_BINDINGS, TYPE_BINDINGS, TYPE_NAME_ANY, TYPE_NAME_STRING, TYPE_NAME_TABLE,
+    },
     data::{Function, FunctionCall, Type, Variable},
 };
 use serde::{Deserialize, Serialize};
@@ -123,36 +125,43 @@ impl Registers {
             let var = self.get_var(possible_root_name);
             let expanded_type = self.get_type(&var.r#type.ident); // we need to expand the type to access its properties
 
-            match expanded_type.properties.get(property) {
-                Some(property_type) => {
-                    // this is just a linter, so we honestly don't care about the
-                    // value of the variable... this means we can just create a new
-                    // variable with an empty value
-                    return (property.to_string(), property_type.r#type.clone()).into();
-                }
-                None => {
-                    // check variant
-                    if !expanded_type.variants.is_empty() {
-                        match expanded_type.variants.get(property) {
-                            Some(var) => {
-                                return var.to_owned();
-                            }
-                            None => {
-                                // no such property on struct
-                                fcompiler_general_error(
-                                    CompilerError::NoSuchVariant,
-                                    format!("{}.{}", var.r#type.ident, property),
-                                )
+            if expanded_type.ident != TYPE_NAME_TABLE {
+                // we can access any value on tables because they work like js objects
+                match expanded_type.properties.get(property) {
+                    Some(property_type) => {
+                        // this is just a linter, so we honestly don't care about the
+                        // value of the variable... this means we can just create a new
+                        // variable with an empty value
+                        return (property.to_string(), property_type.r#type.clone()).into();
+                    }
+                    None => {
+                        // check variant
+                        if !expanded_type.variants.is_empty() {
+                            match expanded_type.variants.get(property) {
+                                Some(var) => {
+                                    return var.to_owned();
+                                }
+                                None => {
+                                    // no such property on struct
+                                    fcompiler_general_error(
+                                        CompilerError::NoSuchVariant,
+                                        format!("{}.{}", var.r#type.ident, property),
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    // no such property on struct
-                    fcompiler_general_error(
-                        CompilerError::NoSuchProperty,
-                        format!("{}.{}", var.r#type.ident, property),
-                    )
+                        // no such property on struct
+                        fcompiler_general_error(
+                            CompilerError::NoSuchProperty,
+                            format!("{}.{}", var.r#type.ident, property),
+                        )
+                    }
                 }
+            } else {
+                // this is ONLY for table types since they don't have a predefined
+                // set of properties
+                return (key.to_string(), Type::from(TYPE_NAME_ANY)).into();
             }
         }
 

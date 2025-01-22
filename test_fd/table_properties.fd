@@ -1,0 +1,5 @@
+Table<string string> t = {
+    abcd = "12345"
+}
+
+print(t.abcd)
