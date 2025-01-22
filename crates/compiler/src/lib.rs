@@ -5,7 +5,7 @@ pub mod checking;
 pub mod data;
 
 use checking::{MultipleTypeChecking, Registers, ToLua};
-use data::{Conditional, ForLoop, Function, FunctionCall, Type, Variable, WhileLoop};
+use data::{Conditional, ForLoop, Function, FunctionCall, Type, TypeAlias, Variable, WhileLoop};
 
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
 
@@ -49,6 +49,15 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 registers
                     .variables
                     .insert(t.ident.clone(), (t.ident.clone(), t).into());
+            }
+            Rule::type_alias => {
+                let t = TypeAlias::from(pair);
+                lua_out.push_str(&t.transform());
+                let ty = registers.get_type(&t.r#type.ident);
+                registers.types.insert(t.ident.clone(), ty.clone());
+                registers
+                    .variables
+                    .insert(t.ident.clone(), (t.ident.clone(), ty).into());
             }
             Rule::for_loop => lua_out.push_str(&ForLoop::from((pair, &registers)).transform()),
             Rule::while_loop => lua_out.push_str(&WhileLoop::from((pair, &registers)).transform()),

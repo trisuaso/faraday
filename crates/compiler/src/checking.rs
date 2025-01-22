@@ -79,7 +79,7 @@ pub trait MultipleTypeChecking {
 
 pub trait MultipleGenericChecking {
     /// Check the generics of two [`Types`].
-    fn check_multiple(&self, supplied: Vec<String>, registers: &Registers) -> ();
+    fn check_generics(&self, supplied: Vec<String>, registers: &Registers) -> ();
 }
 
 // ...
@@ -232,7 +232,7 @@ impl TypeChecking for Variable {
         } else {
             // check generics
             self.r#type
-                .check_multiple(supplied.generics.clone(), registers);
+                .check_generics(supplied.generics.clone(), registers);
         }
     }
 }
@@ -246,15 +246,16 @@ impl MultipleTypeChecking for FunctionCall<'_> {
 
         for (i, r#type) in function.arguments.types.iter().enumerate() {
             let matching = match supplied.get(i) {
-                Some(t) => t,
+                Some(t) => t, // expand type
                 None => continue,
             };
 
-            if r#type != matching {
+            let expanded = registers.get_type(&matching.ident);
+            if expanded != *matching {
                 fcompiler_type_error(r#type.ident.clone(), matching.ident.clone());
             } else {
                 // check generics
-                r#type.check_multiple(matching.generics.clone(), registers);
+                r#type.check_generics(matching.generics.clone(), registers);
             }
         }
     }
@@ -263,9 +264,7 @@ impl MultipleTypeChecking for FunctionCall<'_> {
 impl TypeChecking for Function {
     /// Check the **return type** of the function.
     fn check(&self, supplied: Type, registers: &Registers) -> () {
-        if let None = registers.types.get(&supplied.ident) {
-            fcompiler_general_error(CompilerError::NoSuchType, supplied.ident)
-        }
+        registers.get_type(&supplied.ident);
     }
 }
 
@@ -283,7 +282,7 @@ impl MultipleTypeChecking for Function {
 impl MultipleGenericChecking for Type {
     /// Go through all generics applied and make sure there aren't too few,
     /// too many, or invalid types.
-    fn check_multiple(&self, supplied: Vec<String>, registers: &Registers) -> () {
+    fn check_generics(&self, supplied: Vec<String>, registers: &Registers) -> () {
         if (supplied.len() < self.generics.len()) | (supplied.len() > self.generics.len()) {
             fcompiler_general_error(
                 CompilerError::InvalidGenericCount,
@@ -297,9 +296,7 @@ impl MultipleGenericChecking for Type {
 
         // check that all supplied types are valid
         for supplied in supplied {
-            if let None = registers.types.get(&supplied) {
-                fcompiler_general_error(CompilerError::NoSuchType, supplied)
-            }
+            registers.get_type(&supplied);
         }
     }
 }

@@ -274,9 +274,37 @@ impl From<(Pair<'_, Rule>, &Registers)> for Variable {
                             let call = FunctionCall::from(pair);
                             let supplied_types = call.arg_types(reg);
                             call.check_multiple(supplied_types, reg);
+
+                            // check function return type
+                            let function = reg.get_fn(&call.ident);
+                            if function.return_type != r#type {
+                                fcompiler_general_error(
+                                    CompilerError::InvalidType,
+                                    format!(
+                                        "cannot assign \"{}\" to \"{}\"",
+                                        function.return_type.ident, r#type.ident
+                                    ),
+                                )
+                            }
+
+                            // ...
                             call.transform()
                         }
-                        _ => pair.as_str().to_string(),
+                        _ => {
+                            let t = Type::from_parser_type(pair.clone(), reg);
+
+                            if t != r#type {
+                                fcompiler_general_error(
+                                    CompilerError::InvalidType,
+                                    format!(
+                                        "cannot assign \"{}\" to \"{}\"",
+                                        t.ident, r#type.ident
+                                    ),
+                                )
+                            }
+
+                            pair.as_str().to_string()
+                        }
                     }
                 }
             }
@@ -526,18 +554,15 @@ impl From<(Pair<'_, Rule>, &Registers)> for Type {
         let type_ref = Self::from(value.0);
 
         // check registries for type since they were supplied
-        match reg.types.get(&type_ref.ident) {
-            Some(t) => {
-                if t != &type_ref {
-                    // this type exists, but it isn't the same type description
-                    fcompiler_general_error(CompilerError::NoSuchType, type_ref.ident.clone())
-                } else {
-                    // check generics
-                    t.check_multiple(type_ref.generics.clone(), reg);
-                }
-            }
-            None => fcompiler_general_error(CompilerError::NoSuchType, type_ref.ident.clone()),
-        }
+        let t = reg.get_type(&type_ref.ident);
+
+        // if t != type_ref {
+        //     // this type exists, but it isn't the same type description
+        //     fcompiler_general_error(CompilerError::NoSuchType, type_ref.ident.clone())
+        // } else {
+        // check generics
+        t.check_generics(type_ref.generics.clone(), reg);
+        // }
 
         // type exists, return
         type_ref
@@ -570,6 +595,48 @@ impl ToLua for Type {
         }
 
         format!("{}{} = {{}}\n", self.visibility, self.ident)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeAlias {
+    pub ident: String,
+    pub r#type: Type,
+    pub visibility: TypeVisibility,
+}
+
+impl ToLua for TypeAlias {
+    fn transform(&self) -> String {
+        format!(
+            "{}{} = {}\n",
+            self.visibility, self.ident, self.r#type.ident
+        )
+    }
+}
+
+impl From<Pair<'_, Rule>> for TypeAlias {
+    fn from(value: Pair<'_, Rule>) -> Self {
+        let inner = value.into_inner();
+
+        let mut ident: String = String::new();
+        let mut r#type: Type = Type::default();
+        let mut visibility: TypeVisibility = TypeVisibility::Private;
+
+        for pair in inner {
+            let rule = pair.as_rule();
+            match rule {
+                Rule::type_modifier => visibility = pair.into(),
+                Rule::identifier => ident = pair.as_str().to_string(),
+                Rule::r#type => r#type = pair.into(),
+                _ => unreachable!("reached impossible rule in type alias processing"),
+            }
+        }
+
+        Self {
+            ident,
+            r#type,
+            visibility,
+        }
     }
 }
 
