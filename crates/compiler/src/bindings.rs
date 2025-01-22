@@ -30,7 +30,7 @@ macro_rules! import_default_type {
 macro_rules! lua_builtin_fn {
     ($fn_name:literal($($names:expr),+ ; $($types:expr),+) -> $return_type:ident >> $map:ident) => {
         $map.insert($fn_name.to_string(), crate::data::Function {
-            name: $fn_name.to_string(),
+            ident: $fn_name.to_string(),
             arguments: $crate::data::FunctionArguments {
                 keys: vec![$($names.to_string()),+],
                 types: vec![$(Type::from(($types, TypeVisibility::Public))),+],
@@ -39,6 +39,7 @@ macro_rules! lua_builtin_fn {
             body: String::new(),
             visibility: $crate::data::TypeVisibility::Public,
             execution: $crate::data::ExecutionType::Sync,
+            association: $crate::data::AssociationType::Static
         });
     };
 }

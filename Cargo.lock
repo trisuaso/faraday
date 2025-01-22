@@ -19,7 +19,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "compiler"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "parser",
  "serde",
@@ -100,7 +100,7 @@ checksum = "1261fe7e33c73b354eab43b1273a57c8f967d0391e80353e51f764ac02cf6775"
 
 [[package]]
 name = "parser"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pest",
  "pest_derive",

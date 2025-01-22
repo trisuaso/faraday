@@ -7,5 +7,9 @@
 * Type checking
 * Structs
 * Type aliases
+* Enums
+* `impl` blocks
+    * `static` methods
 * Braces (instead of `do ... end`/`then ... end`)
 * Async/await (coroutine wrappers)
+* `else if` instead of `elseif` (big feature)

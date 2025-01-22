@@ -44,15 +44,45 @@ impl From<Pair<'_, Rule>> for ExecutionType {
     }
 }
 
+/// The association of a [`Function`].
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AssociationType {
+    /// Static functions are part of the root of the struct and cannot access `self`.
+    ///
+    /// ```text
+    /// function parent.child()
+    /// ```
+    Static,
+    /// Associated functions are part of an existing instance of a struct.
+    ///
+    /// ```text
+    /// function parent:child()
+    /// ```
+    Assoc,
+    /// Not a method
+    None,
+}
+
+impl From<Pair<'_, Rule>> for AssociationType {
+    fn from(value: Pair<Rule>) -> Self {
+        match value.as_str() {
+            "static" => AssociationType::Static,
+            "assoc" => AssociationType::Assoc,
+            _ => unreachable!("reached impossible asociation type value"),
+        }
+    }
+}
+
 /// A typed function definition.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Function {
-    pub name: String,
+    pub ident: String,
     pub arguments: FunctionArguments,
     pub return_type: Type,
     pub body: String,
     pub visibility: TypeVisibility,
     pub execution: ExecutionType,
+    pub association: AssociationType,
 }
 
 impl Function {
@@ -78,7 +108,7 @@ impl ToLua for Function {
             format!(
                 "{}{} = function ({})\n   return coroutine.create(function ()\n    {}\nend)\nend\n",
                 self.visibility.to_string(),
-                self.name,
+                self.ident,
                 self.args_string(),
                 self.body
             )
@@ -87,7 +117,7 @@ impl ToLua for Function {
             format!(
                 "{}function {}({})\n    {}\nend\n",
                 self.visibility.to_string(),
-                self.name,
+                self.ident,
                 self.args_string(),
                 self.body
             )
@@ -106,6 +136,7 @@ impl From<(Pair<'_, Rule>, &Registers)> for Function {
         let mut return_type: Type = Type::default();
         let mut visibility: TypeVisibility = TypeVisibility::Private;
         let mut execution: ExecutionType = ExecutionType::Sync;
+        let mut association: AssociationType = AssociationType::None;
         let mut body: String = String::new();
 
         while let Some(pair) = inner.next() {
@@ -116,6 +147,9 @@ impl From<(Pair<'_, Rule>, &Registers)> for Function {
                 }
                 Rule::type_modifier => visibility = pair.into(),
                 Rule::sync_modifier => execution = pair.into(),
+                Rule::method_modifier => {
+                    association = pair.into();
+                }
                 Rule::typed_parameter => {
                     let mut inner = pair.into_inner();
                     // it's safe to unwrap here because the grammar REQUIRES
@@ -144,17 +178,15 @@ impl From<(Pair<'_, Rule>, &Registers)> for Function {
         }
 
         // special function names
-        let mut name_association_split = name.split(":");
+        let name_association_split = name.split(":");
+        let true_name = name_association_split.skip(1).next().unwrap_or(&name);
 
-        let struct_name = name_association_split.next().unwrap_or("");
-        let true_name = name_association_split.next().unwrap_or(&name);
-
-        if true_name == "new" {
+        if (true_name == "new") && (association == AssociationType::Static) {
             // imitate class
             body = format!(
-                "{struct_name}.__index = {struct_name}
+                "__data_struct.__index = __data_struct
 local self = {{}}
-setmetatable(self, {struct_name})
+setmetatable(self, __data_struct)
 {body}
 return self"
             )
@@ -162,12 +194,13 @@ return self"
 
         // ...
         let fun = Function {
-            name: name.clone(),
+            ident: name.clone(),
             arguments: FunctionArguments { keys, types },
             return_type,
             body,
             visibility,
             execution,
+            association,
         };
 
         fun.check(fun.return_type.clone(), reg);
@@ -493,7 +526,10 @@ impl From<Pair<'_, Rule>> for Type {
                 }
                 Rule::type_modifier => visibility = pair.into(),
                 Rule::identifier => ident = pair.as_str().to_string(),
-                Rule::r#type => ident = pair.into_inner().next().unwrap().as_str().to_string(),
+                Rule::r#type => {
+                    let t: Type = pair.into();
+                    ident = t.ident;
+                }
                 Rule::struct_block => {
                     let mut inner = pair.into_inner();
                     while let Some(pair) = inner.next() {
@@ -602,7 +638,7 @@ impl ToLua for Type {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeAlias {
-    pub ident: String,
+    pub ident: Type,
     pub r#type: Type,
     pub visibility: TypeVisibility,
 }
@@ -611,7 +647,7 @@ impl ToLua for TypeAlias {
     fn transform(&self) -> String {
         format!(
             "{}{} = {}\n",
-            self.visibility, self.ident, self.r#type.ident
+            self.visibility, self.ident.ident, self.r#type.ident
         )
     }
 }
@@ -620,7 +656,8 @@ impl From<Pair<'_, Rule>> for TypeAlias {
     fn from(value: Pair<'_, Rule>) -> Self {
         let inner = value.into_inner();
 
-        let mut ident: String = String::new();
+        let mut ident: Type = Type::default();
+        let mut ident_type_defined: bool = false;
         let mut r#type: Type = Type::default();
         let mut visibility: TypeVisibility = TypeVisibility::Private;
 
@@ -628,8 +665,16 @@ impl From<Pair<'_, Rule>> for TypeAlias {
             let rule = pair.as_rule();
             match rule {
                 Rule::type_modifier => visibility = pair.into(),
-                Rule::identifier => ident = pair.as_str().to_string(),
-                Rule::r#type => r#type = pair.into(),
+                Rule::r#type => {
+                    if !ident_type_defined {
+                        // ident
+                        ident_type_defined = true;
+                        ident = pair.into();
+                    } else {
+                        // assignment
+                        r#type = pair.into()
+                    }
+                }
                 _ => unreachable!("reached impossible rule in type alias processing"),
             }
         }
@@ -752,6 +797,73 @@ impl<'a> From<Pair<'a, Rule>> for FunctionCall<'a> {
 impl ToLua for FunctionCall<'_> {
     fn transform(&self) -> String {
         self.lua_out.to_owned()
+    }
+}
+
+/// An implementation definition of a struct.
+#[derive(Debug, Clone)]
+pub struct Impl {
+    pub ident: String,
+    pub functions: Vec<Function>,
+}
+
+impl From<(Pair<'_, Rule>, &Registers)> for Impl {
+    fn from(value: (Pair<'_, Rule>, &Registers)) -> Self {
+        let regs = value.1;
+        let mut inner = value.0.into_inner();
+
+        let mut ident: String = String::new();
+        let mut functions: Vec<Function> = Vec::new();
+
+        while let Some(pair) = inner.next() {
+            let rule = pair.as_rule();
+            match rule {
+                Rule::identifier => {
+                    // make sure variable exists
+                    let var = regs.get_var(pair.as_str());
+                    ident = var.ident
+                }
+                Rule::impl_block => {
+                    let mut inner = pair.into_inner();
+                    while let Some(pair) = inner.next() {
+                        let rule = pair.as_rule();
+                        match rule {
+                            Rule::method => {
+                                let mut function: Function = (pair, regs).into();
+
+                                if function.association == AssociationType::Static {
+                                    // period
+                                    function.ident = format!("{}.{}", ident, function.ident);
+                                } else {
+                                    // colon
+                                    function.ident = format!("{}:{}", ident, function.ident);
+                                }
+
+                                function.body = function.body.replace("__data_struct", &ident);
+                                function.visibility = TypeVisibility::Public;
+                                functions.push(function)
+                            }
+                            _ => unreachable!("reached impossible block in impl block processing"),
+                        }
+                    }
+                }
+                _ => unreachable!("reached impossible block in impl processing"),
+            }
+        }
+
+        Self { ident, functions }
+    }
+}
+
+impl ToLua for Impl {
+    fn transform(&self) -> String {
+        let mut lua_out = String::new();
+
+        for function in &self.functions {
+            lua_out.push_str(&function.transform());
+        }
+
+        lua_out
     }
 }
 

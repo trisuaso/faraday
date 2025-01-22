@@ -49,7 +49,7 @@ boolean = { "true" | "false" }
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
-chunk = _{ function | type_alias | struct | enum | for_loop | while_loop | conditional | value | block }
+chunk = _{ impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | value | block }
 
 for_loop = { "for" ~ "(" ~ (identifier ~ ","?)* ~ ")" ~ "in" ~ value ~ block }
 while_loop = { "while" ~ primitive ~ block }
@@ -63,7 +63,12 @@ function        = { type_modifier? ~ sync_modifier? ~ "fn" ~ identifier ~ "(" ~ 
 call            = { identifier ~ "(" ~ (chunk ~ ","?)* ~ ")" }
 block           = { "{" ~ chunk* ~ "}" }
 
-struct       = { "struct" ~ type ~ struct_block }
+impl = { "impl" ~ identifier ~ impl_block }
+impl_block = { "{" ~ method* ~ "}" }
+method_modifier = { "static" | "assoc" }
+method = { method_modifier? ~ sync_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
+
+struct       = { type_modifier? ~ "struct" ~ type ~ struct_block }
 struct_type  = { type_modifier? ~ type ~ identifier ~ ";" }
 struct_block = { "{" ~ struct_type* ~ "}" }
 
@@ -71,4 +76,4 @@ enum = {"enum" ~ identifier ~ enum_block}
 enum_variant  = { pair ~ ";" }
 enum_block = { "{" ~ enum_variant* ~ "}" }
 
-type_alias = { type_modifier? ~ "type" ~ identifier ~ "=" ~ type }
+type_alias = { type_modifier? ~ "type" ~ type ~ "=" ~ type }

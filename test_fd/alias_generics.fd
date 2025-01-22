@@ -1,0 +1,3 @@
+// This test is to test the usage of generics in aliases.
+type Array = Table<number string>
+print("Inspect state_out.json to validate test")

@@ -1,17 +1,24 @@
-struct TestStruct {
+pub struct TestStruct {
     string field;
     string field_1;
 }
 
-// special function which will set the metatable of TestStruct
-pub fn TestStruct:new(string field) -> TestStruct {
-    self.field = field
+impl TestStruct {
+    // special function which will set the metatable of TestStruct
+    // this "new" function ONLY works with static functions named "new"
+    static fn new(string field) -> TestStruct {
+        self.field = field
+    }
+
+    fn echo_field() -> string {
+        self.field_1 = "This field was added through a method."
+        return self.field
+    }
+
+    static fn static_method() -> string {
+        print("static method called")
+    }
 }
 
-pub fn TestStruct:echo_field() -> string {
-    self.field_1 = "This field was added through a method."
-    return self.field
-}
-
-TestStruct item = TestStruct:new("Hello, world!")
-print(item:echo_field(), item.field_1)
+TestStruct item = TestStruct.new("Hello, world!")
+print(item:echo_field(), item.field_1, TestStruct.static_method())
