@@ -1,7 +1,10 @@
 use bindings::{TYPE_NAME_ANY, TYPE_NAME_TABLE};
 use parser::{FaradayParser, Pairs, Parser, Rule};
 use pathbufd::PathBufD as PathBuf;
-use std::fs::{read_to_string, write};
+use std::{
+    fs::{read_to_string, write},
+    sync::{LazyLock, Mutex},
+};
 
 pub mod bindings;
 pub mod checking;
@@ -29,19 +32,41 @@ macro_rules! merge_register {
     };
 }
 
+pub static COMPILER_MARKER: LazyLock<Mutex<String>> =
+    LazyLock::new(|| Mutex::new(String::default()));
+
 /// Generate a Lua output from the given parser output
 pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registers) {
     fcompiler_marker!("{}", registers.get_var("@@FARADAY_PATH").value);
     let do_compile = registers.get_var("@@FARADAY_NO_COMPILE").value == "false";
+    let do_annotation = registers.get_var("@@FARADAY_ANNOTATE").value == "true";
 
     let mut lua_out = String::new();
 
     for pair in input {
         let rule = pair.as_rule();
 
+        // marker
         let span = pair.as_span();
-        fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
+        let start = span.start_pos().line_col();
+        let marker = format!(
+            "{}:{}:{}",
+            registers.get_var("@@FARADAY_PATH").value,
+            start.0,
+            start.1
+        );
 
+        match COMPILER_MARKER.lock() {
+            Ok(mut w) => *w = marker.clone(),
+            Err(_) => COMPILER_MARKER.clear_poison(),
+        }
+
+        fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
+        if do_annotation && do_compile {
+            lua_out.push_str(&format!("-- {}\n", marker));
+        }
+
+        // ...
         match rule {
             Rule::function => {
                 let function: Function = (pair, &registers).into();
@@ -159,6 +184,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 let mut path: PathBuf = PathBuf::new();
                 let mut relative_file_path: String = String::new();
                 let mut ident: String = String::new();
+                let mut reexport: bool = false;
 
                 while let Some(pair) = inner.next() {
                     let rule = pair.as_rule();
@@ -175,6 +201,9 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                             }
                         }
                         Rule::identifier => ident = pair.as_str().to_string(),
+                        Rule::type_modifier => {
+                            reexport = TypeVisibility::from(pair) == TypeVisibility::Public
+                        }
                         _ => unreachable!("reached impossible rule type in use processing"),
                     }
                 }
@@ -193,9 +222,18 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                         (
                             TYPE_NAME_TABLE,
                             vec!["any".to_string(), "any".to_string()],
-                            TypeVisibility::Private,
+                            if reexport {
+                                TypeVisibility::Public
+                            } else {
+                                TypeVisibility::Private
+                            },
                         )
                             .into(),
+                        if reexport {
+                            TypeVisibility::Public
+                        } else {
+                            TypeVisibility::Private
+                        },
                     )
                         .into(),
                 );
@@ -299,6 +337,7 @@ pub fn process_file(
 
     define!("@@FARADAY_PATH" = (path.as_path().to_str().unwrap()) >> registers);
     define!("@@FARADAY_NO_COMPILE" = check_only >> registers);
+    define!("@@FARADAY_ANNOTATE" = true >> registers);
 
     // ...
     let mut lua_out: String = String::new();

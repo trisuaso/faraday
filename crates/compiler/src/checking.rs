@@ -51,7 +51,12 @@ pub fn fcompiler_error_print(args: std::fmt::Arguments) -> String {
 macro_rules! fcompiler_error {
     ($($arg:tt)*) => {
         {
-            println!("\x1b[31;1merror:\x1b[0m \x1b[1m{}\x1b[0m", $crate::checking::fcompiler_error_print(std::format_args!($($arg)*)));
+            println!(
+                "\x1b[31;1merror:\x1b[0m \x1b[1m{}\x1b[0m\n    \x1b[2maround {}\x1b[0m",
+                $crate::checking::fcompiler_error_print(std::format_args!($($arg)*)),
+                *$crate::COMPILER_MARKER.lock().unwrap()
+            );
+
             std::process::exit(1);
         }
     }
@@ -129,7 +134,13 @@ impl Registers {
     pub fn get_type(&self, key: &str) -> Type {
         match self.types.get(key) {
             Some(t) => t.to_owned(),
-            None => fcompiler_general_error(CompilerError::NoSuchType, key.to_string()),
+            None => {
+                // deep check
+                match self.types.iter().find(|t| t.1.ident == key) {
+                    Some(t) => t.1.to_owned(),
+                    None => fcompiler_general_error(CompilerError::NoSuchType, key.to_string()),
+                }
+            }
         }
     }
 

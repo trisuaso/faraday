@@ -21,7 +21,10 @@ fn main() {
     // if !parent.exists() {
     // std::fs::create_dir_all(parent).unwrap();
     // }
-    std::fs::remove_dir_all(parent).unwrap();
+    if parent.exists() {
+        std::fs::remove_dir_all(parent).unwrap();
+    }
+
     std::fs::create_dir_all(parent).unwrap();
 
     // process
@@ -34,7 +37,7 @@ fn main() {
 
     // finished
     let micros = start.elapsed().unwrap().as_micros();
-    let gap = "-".repeat(((micros / 50) as usize) / 2);
+    let gap = "-".repeat(((micros / 100) as usize) / 2);
 
     println!("🦇 \x1b[91m{} end {}\x1b[0m 🦖", gap, gap);
 

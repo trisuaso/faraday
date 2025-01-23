@@ -1,0 +1,12 @@
+pub enum OsType {
+    string Win = "win";
+    string Unix = "unix";
+}
+
+pub fn os_type() -> OsType {
+    if (package.config:sub(1, 1) == "\\") {
+        return OsType.Win
+    }
+
+    return OsType.Unix
+}

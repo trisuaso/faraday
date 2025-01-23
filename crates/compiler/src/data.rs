@@ -242,6 +242,18 @@ impl From<(String, Type)> for Variable {
     }
 }
 
+impl From<(String, Type, TypeVisibility)> for Variable {
+    fn from(value: (String, Type, TypeVisibility)) -> Self {
+        Self {
+            ident: value.0,
+            r#type: value.1,
+            value: String::new(),
+            visibility: value.2,
+            constant: ConstantModifier::Inconstant,
+        }
+    }
+}
+
 impl From<Pair<'_, Rule>> for Variable {
     fn from(value: Pair<'_, Rule>) -> Self {
         let mut inner = value.into_inner();
