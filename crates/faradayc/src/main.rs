@@ -11,6 +11,7 @@ fn main() {
     let input = args.next().unwrap_or("main.fd".to_string());
 
     let exec = args.next().unwrap_or("-nr".to_string());
+    let check_only = exec == "-r=check";
     let run = exec.starts_with("-r=");
 
     // create build dir
@@ -25,13 +26,22 @@ fn main() {
 
     // process
     let start = SystemTime::now();
-    let output = process_file(PathBuf::current().join(&input), Registers::default(), false);
+    let output = process_file(
+        PathBuf::current().join(&input),
+        Registers::default(),
+        check_only,
+    );
 
     // finished
     let micros = start.elapsed().unwrap().as_micros();
     let gap = "-".repeat(((micros / 50) as usize) / 2);
 
     println!("🦇 \x1b[91m{} end {}\x1b[0m 🦖", gap, gap);
+
+    if check_only {
+        // we're not meant to save since we only checked types!
+        std::process::exit(0);
+    }
 
     println!(
         "    \x1b[32;1mFinished\x1b[0m \x1b[2m{input}\x1b[0m in \x1b[1m{}μs ({:.4}s)\x1b[0m",
