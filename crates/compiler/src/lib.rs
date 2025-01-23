@@ -7,7 +7,7 @@ pub mod bindings;
 pub mod checking;
 pub mod data;
 
-use checking::{MultipleTypeChecking, Registers, ToLua};
+use checking::{MultipleTypeChecking, Registers, ToLua, fcompiler_general_marker};
 use data::{
     Conditional, ForLoop, Function, FunctionCall, Impl, Type, TypeAlias, TypeVisibility, Variable,
     WhileLoop,
@@ -28,13 +28,25 @@ macro_rules! merge_register {
 
 /// Generate a Lua output from the given parser output
 pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registers) {
+    fcompiler_marker!("{}", registers.get_var("@@FARADAY_PATH").value);
+    let do_compile = registers.get_var("@@FARADAY_NO_COMPILE").value == "false";
+
     let mut lua_out = String::new();
 
     for pair in input {
-        match pair.as_rule() {
+        let rule = pair.as_rule();
+
+        let span = pair.as_span();
+        fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
+
+        match rule {
             Rule::function => {
                 let function: Function = (pair, &registers).into();
-                lua_out.push_str(&function.transform());
+
+                if do_compile {
+                    lua_out.push_str(&function.transform());
+                }
+
                 registers.functions.insert(function.ident.clone(), function);
             }
             Rule::block => {
@@ -42,18 +54,29 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             }
             Rule::pair => {
                 let variable: Variable = (pair, &registers).into();
-                lua_out.push_str(&variable.transform());
+
+                if do_compile {
+                    lua_out.push_str(&variable.transform());
+                }
+
                 registers.variables.insert(variable.ident.clone(), variable);
             }
             Rule::call => {
                 let call = FunctionCall::from(pair);
                 let supplied_types = call.arg_types(&registers);
                 call.check_multiple(supplied_types, &registers);
-                lua_out.push_str(&call.transform());
+
+                if do_compile {
+                    lua_out.push_str(&call.transform());
+                }
             }
             Rule::r#struct => {
                 let t = Type::from(pair);
-                lua_out.push_str(&t.transform());
+
+                if do_compile {
+                    lua_out.push_str(&t.transform());
+                }
+
                 registers.types.insert(t.ident.clone(), t.clone());
                 registers
                     .variables
@@ -61,7 +84,11 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             }
             Rule::r#enum => {
                 let t = Type::from(pair);
-                lua_out.push_str(&t.transform());
+
+                if do_compile {
+                    lua_out.push_str(&t.transform());
+                }
+
                 registers.types.insert(t.ident.clone(), t.clone());
                 registers
                     .variables
@@ -69,7 +96,11 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             }
             Rule::type_alias => {
                 let t = TypeAlias::from(pair);
-                lua_out.push_str(&t.transform());
+
+                if do_compile {
+                    lua_out.push_str(&t.transform());
+                }
+
                 let mut ty = registers.get_type(&t.r#type.ident);
                 ty.generics = t.r#type.generics;
                 registers.types.insert(t.ident.ident.clone(), ty.clone());
@@ -120,9 +151,11 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                     }
                 }
 
-                lua_out.push_str(&format!(
-                    "local {ident} = require \"{relative_file_path}\"\n"
-                ));
+                if do_compile {
+                    lua_out.push_str(&format!(
+                        "local {ident} = require \"{relative_file_path}\"\n"
+                    ));
+                }
 
                 // register module
                 registers.variables.insert(
@@ -140,7 +173,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 );
 
                 // process file and merge registers
-                let compiled = process_file(path.clone(), Registers::default());
+                let compiled = process_file(path.clone(), Registers::default(), !do_compile);
                 let compiled_regs = compiled.1;
 
                 merge_register!(ident; registers.types + compiled_regs.types);
@@ -162,7 +195,11 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                     fcompiler_error!("{e}")
                 }
             }
-            _ => lua_out.push_str(&(pair.as_str().to_string() + "\n")),
+            _ => {
+                if do_compile {
+                    lua_out.push_str(&(pair.as_str().to_string() + "\n"))
+                }
+            }
         }
     }
 
@@ -203,7 +240,7 @@ macro_rules! define {
         $registers.variables.insert($name.to_string(), Variable {
             ident: $name.to_string(),
             r#type: TYPE_NAME_ANY.into(),
-            value: stringify!($value).to_string(),
+            value: $value.to_string(),
             visibility: $crate::data::TypeVisibility::Private,
         });
     };
@@ -219,11 +256,18 @@ macro_rules! define {
 }
 
 /// Process an individual file given its `path`.
-pub fn process_file(path: PathBuf, mut registers: Registers) -> (String, Registers) {
+pub fn process_file(
+    path: PathBuf,
+    mut registers: Registers,
+    check_only: bool,
+) -> (String, Registers) {
     // define some compiler variables
     define!(
         "@@FARADAY_PATH_PARENT" = (path.as_path().parent().unwrap().to_str().unwrap()) >> registers
     );
+
+    define!("@@FARADAY_PATH" = (path.as_path().to_str().unwrap()) >> registers);
+    define!("@@FARADAY_NO_COMPILE" = check_only >> registers);
 
     // ...
     let mut lua_out: String = String::new();

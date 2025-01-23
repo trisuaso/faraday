@@ -4,6 +4,7 @@ use crate::{
     },
     data::{Function, FunctionCall, Type, Variable},
 };
+use parser::Rule;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt::Display};
 
@@ -47,7 +48,17 @@ pub fn fcompiler_error_print(args: std::fmt::Arguments) -> String {
 #[macro_export]
 macro_rules! fcompiler_error {
     ($($arg:tt)*) => {
-        panic!("\x1b[31;1merror:\x1b[0m \x1b[1m{}\x1b[0m", $crate::checking::fcompiler_error_print(std::format_args!($($arg)*)))
+        {
+            println!("\x1b[31;1merror:\x1b[0m \x1b[1m{}\x1b[0m", $crate::checking::fcompiler_error_print(std::format_args!($($arg)*)));
+            std::process::exit(1);
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! fcompiler_marker {
+    ($($arg:tt)*) => {
+        println!("\x1b[36;1mmarker:\x1b[0m \x1b[1m{}\x1b[0m", $crate::checking::fcompiler_error_print(std::format_args!($($arg)*)))
     }
 }
 
@@ -61,7 +72,15 @@ pub fn fcompiler_type_error(expected: String, received: String) -> ! {
 
 /// Create a general error.
 pub fn fcompiler_general_error(error: CompilerError, additional: String) -> ! {
-    fcompiler_error!("\x1b[93m{error}:\x1b[0m {additional}",)
+    fcompiler_error!("\x1b[93m{error}:\x1b[0m {additional}")
+}
+
+/// Create a general marker.
+pub fn fcompiler_general_marker(rule: Rule, start: (usize, usize), end: (usize, usize)) -> () {
+    fcompiler_marker!(
+        "\x1b[96;1m{:?}:\x1b[0m start \x1b[2m{start:?}\x1b[0m, end \x1b[2m{end:?}\x1b[0m",
+        rule
+    )
 }
 
 // traits
