@@ -5,7 +5,13 @@
 ## Features
 
 * Type checking
-    * `any` and `empty` types
+    * `any` and `empty`(/`#`) types
+    * `const`(/`incon`) variables
+    * Variable assignment
+    * Variable reassignment
+    * Function arguments
+    * Function return value
+    * Invalid types
 * Structs
 * Type aliases
 * Enums

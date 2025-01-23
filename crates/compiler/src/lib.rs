@@ -7,10 +7,13 @@ pub mod bindings;
 pub mod checking;
 pub mod data;
 
-use checking::{MultipleTypeChecking, Registers, ToLua, fcompiler_general_marker};
+use checking::{
+    CompilerError, MultipleTypeChecking, Registers, ToLua, fcompiler_general_error,
+    fcompiler_general_marker, fcompiler_type_error,
+};
 use data::{
-    Conditional, ForLoop, Function, FunctionCall, Impl, Type, TypeAlias, TypeVisibility, Variable,
-    WhileLoop,
+    Conditional, ConstantModifier, ForLoop, Function, FunctionCall, Impl, Type, TypeAlias,
+    TypeVisibility, Variable, WhileLoop,
 };
 
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
@@ -60,6 +63,31 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 }
 
                 registers.variables.insert(variable.ident.clone(), variable);
+            }
+            Rule::reassignment => {
+                let mut variable: Variable = pair.clone().into();
+                variable.visibility = TypeVisibility::Public; // must be public or reassignment isn't valid in lua
+
+                if let Some(var) = registers.variables.get(&variable.ident) {
+                    // check const
+                    if var.constant == ConstantModifier::Constant {
+                        fcompiler_general_error(
+                            CompilerError::CannotAssignConst,
+                            var.ident.clone(),
+                        );
+                    }
+
+                    // check type
+                    if (variable.r#type != var.r#type) && !variable.r#type.ident.is_empty() {
+                        fcompiler_type_error(var.r#type.ident.clone(), variable.r#type.ident);
+                    }
+                }
+
+                if do_compile && !variable.r#type.ident.is_empty() {
+                    lua_out.push_str(&variable.transform());
+                } else if variable.r#type.ident.is_empty() {
+                    lua_out.push_str(pair.as_str());
+                }
             }
             Rule::call => {
                 let call = FunctionCall::from(pair);
@@ -233,6 +261,7 @@ macro_rules! define {
             r#type: TYPE_NAME_ANY.into(),
             value: $value.to_string(),
             visibility: $crate::data::TypeVisibility::Private,
+            constant: $crate::data::ConstantModifier::Constant,
         });
     };
 
@@ -242,6 +271,7 @@ macro_rules! define {
             r#type: TYPE_NAME_ANY.into(),
             value: $value.to_string(),
             visibility: $crate::data::TypeVisibility::Private,
+            constant: $crate::data::ConstantModifier::Constant,
         });
     };
 
@@ -251,6 +281,7 @@ macro_rules! define {
             r#type: TYPE_NAME_ANY.into(),
             value: $value.to_string(),
             visibility: $crate::data::TypeVisibility::Private,
+            constant: $crate::data::ConstantModifier::Constant,
         });
     };
 }

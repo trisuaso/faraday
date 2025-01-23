@@ -1,6 +1,8 @@
 document = { SOI ~ (chunk)* ~ EOI }
 
-pair  =  { type_modifier? ~ type ~ identifier ~ "=" ~ chunk }
+constant_modifier = { "const" | "incon" }
+pair  =  { type_modifier? ~ constant_modifier? ~ type ~ identifier ~ "=" ~ value_chunk }
+reassignment = { identifier ~ "=" ~ value }
 key   = @{ identifier | string | ("[" ~ int ~ "]") }
 item  =  { key ~ "=" ~ value }
 table =  { "{" ~ (item ~ ","?)* ~ "}" }
@@ -11,7 +13,6 @@ value = _{
   | float
   | integer
   | boolean
-  | pair
   | item
   | table
   | identifier
@@ -49,7 +50,8 @@ boolean = { "true" | "false" }
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
-chunk = _{ use | impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | value | block }
+value_chunk = _{ value | block }
+chunk = _{ use | impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | reassignment | pair | value | block }
 
 use = { "use" ~ string ~ "as" ~ identifier }
 

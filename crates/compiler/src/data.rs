@@ -221,6 +221,7 @@ pub struct Variable {
     pub r#type: Type,
     pub value: String,
     pub visibility: TypeVisibility,
+    pub constant: ConstantModifier,
 }
 
 impl ToLua for Variable {
@@ -236,6 +237,7 @@ impl From<(String, Type)> for Variable {
             r#type: value.1,
             value: String::new(),
             visibility: TypeVisibility::Private,
+            constant: ConstantModifier::Inconstant,
         }
     }
 }
@@ -248,6 +250,7 @@ impl From<Pair<'_, Rule>> for Variable {
         let mut r#type = Type::default();
         let mut value: String = String::new();
         let mut visibility: TypeVisibility = TypeVisibility::Private;
+        let mut constant: ConstantModifier = ConstantModifier::Inconstant;
 
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
@@ -256,12 +259,9 @@ impl From<Pair<'_, Rule>> for Variable {
             fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
 
             match rule {
-                Rule::identifier => {
-                    name = pair.as_str().to_string();
-                }
-                Rule::type_modifier => {
-                    visibility = pair.into();
-                }
+                Rule::identifier => name = pair.as_str().to_string(),
+                Rule::type_modifier => visibility = pair.into(),
+                Rule::constant_modifier => constant = pair.into(),
                 Rule::r#type => r#type = pair.into(),
                 _ => {
                     value = match rule {
@@ -271,7 +271,15 @@ impl From<Pair<'_, Rule>> for Variable {
                         Rule::call => {
                             fcompiler_error!("{}", "cannot do compiler call in an enum")
                         }
-                        _ => pair.as_str().to_string(),
+                        _ => {
+                            if r#type.ident.is_empty() {
+                                // guess type, it wasn't provided (likely a reassignment)
+                                r#type =
+                                    Type::from_parser_type(pair.clone(), &Registers::default());
+                            }
+
+                            pair.as_str().to_string()
+                        }
                     }
                 }
             }
@@ -282,6 +290,7 @@ impl From<Pair<'_, Rule>> for Variable {
             r#type,
             value,
             visibility,
+            constant,
         }
     }
 }
@@ -295,6 +304,7 @@ impl From<(Pair<'_, Rule>, &Registers)> for Variable {
         let mut r#type = Type::default();
         let mut value: String = String::new();
         let mut visibility: TypeVisibility = TypeVisibility::Private;
+        let mut constant: ConstantModifier = ConstantModifier::Inconstant;
 
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
@@ -303,12 +313,9 @@ impl From<(Pair<'_, Rule>, &Registers)> for Variable {
             fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
 
             match rule {
-                Rule::identifier => {
-                    name = pair.as_str().to_string();
-                }
-                Rule::type_modifier => {
-                    visibility = pair.into();
-                }
+                Rule::identifier => name = pair.as_str().to_string(),
+                Rule::type_modifier => visibility = pair.into(),
+                Rule::constant_modifier => constant = pair.into(),
                 Rule::r#type => r#type = (pair, reg).into(),
                 _ => {
                     value = match rule {
@@ -363,6 +370,7 @@ impl From<(Pair<'_, Rule>, &Registers)> for Variable {
             r#type,
             value,
             visibility,
+            constant,
         }
     }
 }
@@ -770,6 +778,29 @@ impl Display for TypeVisibility {
             Self::Public => "",
             Self::Private => "local ",
         })
+    }
+}
+
+/// If the variable is constant or inconstant.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ConstantModifier {
+    Constant,
+    Inconstant,
+}
+
+impl From<Pair<'_, Rule>> for ConstantModifier {
+    fn from(value: Pair<Rule>) -> Self {
+        match value.as_str() {
+            "const" => ConstantModifier::Constant,
+            "incon" => ConstantModifier::Inconstant,
+            _ => unreachable!("reached impossible constant modifier value"),
+        }
+    }
+}
+
+impl Display for ConstantModifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", "")
     }
 }
 

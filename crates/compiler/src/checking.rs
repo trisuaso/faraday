@@ -10,6 +10,7 @@ use std::{collections::BTreeMap, fmt::Display};
 
 pub enum CompilerError {
     InvalidGenericCount,
+    CannotAssignConst,
     NoSuchFunction,
     NoSuchVariable,
     NoSuchProperty,
@@ -24,6 +25,7 @@ impl Display for CompilerError {
         use CompilerError::*;
         write!(f, "{}", match self {
             InvalidGenericCount => "invalid generic count",
+            CannotAssignConst => "cannot assign to constant variable",
             NoSuchFunction => "no such function found in registers",
             NoSuchVariable => "no such variable found in registers",
             NoSuchProperty => "no such property in struct",

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 pub const TYPE_NAME_EMPTY: &str = "empty";
+pub const TYPE_NAME_EMPTY_ALT: &str = "#";
 pub const TYPE_NAME_ANY: &str = "any";
 pub const TYPE_NAME_STRING: &str = "string";
 pub const TYPE_NAME_INT: &str = "number";
@@ -50,6 +51,7 @@ pub static TYPE_BINDINGS: LazyLock<BTreeMap<String, Type>> = LazyLock::new(|| {
     import_default_type!(TYPE_NAME_STRING >> map);
     import_default_type!(TYPE_NAME_NUMBER >> map);
     import_default_type!(TYPE_NAME_EMPTY >> map);
+    import_default_type!(TYPE_NAME_EMPTY_ALT >> map);
     import_default_type!(TYPE_NAME_ANY >> map);
 
     import_default_type!(TYPE_NAME_TABLE("K", "V") >> map);
