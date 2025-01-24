@@ -51,9 +51,10 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
 value_chunk = _{ value | block }
-chunk = _{ use | impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | reassignment | pair | value | block }
+chunk = _{ macro | use | impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | reassignment | pair | value | block }
 
 use = { type_modifier? ~ "use" ~ string ~ "as" ~ identifier }
+macro = { "#" ~ "[" ~ call ~ "]" }
 
 for_loop           = { "for" ~ "(" ~ (identifier ~ ","?)* ~ ")" ~ "in" ~ value ~ block }
 while_loop         = { "while" ~ primitive ~ block }

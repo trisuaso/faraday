@@ -6,7 +6,53 @@ use crate::checking::{
 use crate::fcompiler_error;
 use parser::{Pair, Rule};
 use serde::{Deserialize, Serialize};
+use std::fs::write;
+use std::sync::{LazyLock, Mutex};
 use std::{collections::BTreeMap, fmt::Display};
+
+macro_rules! merge_register {
+    ($prefix:ident; $registers:ident.$sub:ident + $other_registers:ident.$other_sub:ident) => {
+        let reg = &mut $registers.$sub;
+        let other_reg = $other_registers.$other_sub;
+
+        for item in other_reg {
+            reg.insert(format!("{}.{}", $prefix, item.0), item.1);
+        }
+    };
+}
+
+pub fn use_file(
+    path: pathbufd::PathBufD,
+    relative_file_path: String,
+    ident: String,
+    do_compile: bool,
+    registers: &mut Registers,
+) {
+    // process file and merge registers
+    let compiled = crate::process_file(path.clone(), Registers::default(), !do_compile);
+    let compiled_regs = compiled.1;
+
+    if !ident.is_empty() {
+        merge_register!(ident; registers.types + compiled_regs.types);
+        merge_register!(ident; registers.functions + compiled_regs.functions);
+        merge_register!(ident; registers.variables + compiled_regs.variables);
+    }
+
+    let output_path = pathbufd::PathBufD::current()
+        .join("build")
+        .join(format!("{}.lua", relative_file_path));
+
+    let parent = output_path.as_path().parent().unwrap();
+
+    if !parent.exists() {
+        // make sure the file's parent exists
+        std::fs::create_dir_all(parent).unwrap();
+    }
+
+    if let Err(e) = write(output_path, compiled.0) {
+        fcompiler_error!("{e}")
+    }
+}
 
 /// The parameter supplied to a function during creation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -817,6 +863,7 @@ impl Display for ConstantModifier {
 }
 
 /// A call to a stored function.
+#[derive(Debug)]
 pub struct FunctionCall<'a> {
     /// The identifier of the function.
     pub ident: String,
@@ -1172,5 +1219,110 @@ impl ToLua for Conditional {
                 ""
             }
         )
+    }
+}
+
+pub static COMPILER_EXPRESSIONS: LazyLock<Mutex<BTreeMap<String, Function>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::default()));
+
+/// An invocation of the `expr_use` macro "function".
+pub struct ExprUse(pub String);
+
+impl<'a> From<(FunctionCall<'a>, &Registers)> for ExprUse {
+    fn from(value: (FunctionCall<'a>, &Registers)) -> Self {
+        // file path is first argument
+        let regs = value.1;
+        let path: String = value.0.arguments.get(0).unwrap().as_str().to_string();
+
+        let (path, relative_file_path) = {
+            let mut inner = path.replace("\"", "");
+            let relative_file_path = inner.clone(); // before the .fd!
+            inner += ".fd";
+
+            (
+                pathbufd::PathBufD::new()
+                    .join(regs.get_var("@@FARADAY_PATH_PARENT").value)
+                    .join(inner),
+                relative_file_path,
+            )
+        };
+
+        // use file
+        let mut registers = Registers::default();
+
+        let stem = path
+            .as_path()
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
+            .replace(".", "_");
+
+        use_file(
+            path,
+            relative_file_path,
+            "expr".to_string(),
+            true,
+            &mut registers,
+        );
+
+        // store expression
+        let mut lock = match COMPILER_EXPRESSIONS.lock() {
+            Ok(l) => l,
+            Err(_) => fcompiler_error!("poisoned mutex on COMPILER_EXPRESSIONS"),
+        };
+
+        let fun = registers.get_fn(&format!("expr.{stem}"));
+        lock.insert(stem.clone(), fun);
+
+        // return
+        Self(stem)
+    }
+}
+
+/// An invocation of the `expr_call` macro "function".
+pub struct ExprCall(pub String);
+
+impl<'a> From<FunctionCall<'a>> for ExprCall {
+    fn from(value: FunctionCall<'a>) -> Self {
+        let mut arguments = value.arguments.iter();
+        let expr_name = arguments.next().unwrap().as_str().to_string();
+
+        // get function
+        let reader = match COMPILER_EXPRESSIONS.lock() {
+            Ok(l) => l,
+            Err(_) => fcompiler_error!("poisoned mutex on COMPILER_EXPRESSIONS"),
+        };
+
+        let fun = match reader.get(&expr_name) {
+            Some(f) => f,
+            None => fcompiler_general_error(CompilerError::NoSuchFunction, expr_name),
+        };
+
+        // build arguments
+        let mut arguments_string: String = String::new();
+
+        let mut arg_count: usize = 0;
+        while let Some(arg) = arguments.next() {
+            arg_count += 1;
+            if arg_count == value.arguments.len() - 1 {
+                arguments_string.push_str(&format!("{}", arg.as_str()));
+            } else {
+                arguments_string.push_str(&format!("{}, ", arg.as_str()));
+            }
+        }
+
+        // build return
+        let lua_out: String = format!("{}\n{expr_name}({arguments_string})", fun.transform());
+
+        // return
+        Self(lua_out)
+    }
+}
+
+impl ToLua for ExprCall {
+    fn transform(&self) -> String {
+        self.0.to_owned()
     }
 }

@@ -2,7 +2,7 @@ use bindings::{TYPE_NAME_ANY, TYPE_NAME_TABLE};
 use parser::{FaradayParser, Pairs, Parser, Rule};
 use pathbufd::PathBufD as PathBuf;
 use std::{
-    fs::{read_to_string, write},
+    fs::read_to_string,
     sync::{LazyLock, Mutex},
 };
 
@@ -15,22 +15,11 @@ use checking::{
     fcompiler_general_marker, fcompiler_type_error,
 };
 use data::{
-    Conditional, ConstantModifier, ForLoop, Function, FunctionCall, Impl, Type, TypeAlias,
-    TypeVisibility, Variable, WhileLoop,
+    Conditional, ConstantModifier, ExprCall, ExprUse, ForLoop, Function, FunctionCall, Impl, Type,
+    TypeAlias, TypeVisibility, Variable, WhileLoop, use_file,
 };
 
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
-
-macro_rules! merge_register {
-    ($prefix:ident; $registers:ident.$sub:ident + $other_registers:ident.$other_sub:ident) => {
-        let reg = &mut $registers.$sub;
-        let other_reg = $other_registers.$other_sub;
-
-        for item in other_reg {
-            reg.insert(format!("{}.{}", $prefix, item.0), item.1);
-        }
-    };
-}
 
 pub static COMPILER_MARKER: LazyLock<Mutex<String>> =
     LazyLock::new(|| Mutex::new(String::default()));
@@ -39,7 +28,6 @@ pub static COMPILER_MARKER: LazyLock<Mutex<String>> =
 pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registers) {
     fcompiler_marker!("{}", registers.get_var("@@FARADAY_PATH").value);
     let do_compile = registers.get_var("@@FARADAY_NO_COMPILE").value == "false";
-    let do_annotation = registers.get_var("@@FARADAY_ANNOTATE").value == "true";
 
     let mut lua_out = String::new();
 
@@ -57,14 +45,11 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
         );
 
         match COMPILER_MARKER.lock() {
-            Ok(mut w) => *w = marker.clone(),
+            Ok(mut w) => *w = marker.clone().replace("./", ""),
             Err(_) => COMPILER_MARKER.clear_poison(),
         }
 
         fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
-        if do_annotation && do_compile {
-            lua_out.push_str(&format!("-- {}\n", marker));
-        }
 
         // ...
         match rule {
@@ -239,27 +224,18 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 );
 
                 // process file and merge registers
-                let compiled = process_file(path.clone(), Registers::default(), !do_compile);
-                let compiled_regs = compiled.1;
+                use_file(path, relative_file_path, ident, do_compile, &mut registers);
+            }
+            Rule::r#macro => {
+                let call = FunctionCall::from(pair.into_inner().next().unwrap());
 
-                merge_register!(ident; registers.types + compiled_regs.types);
-                merge_register!(ident; registers.functions + compiled_regs.functions);
-                merge_register!(ident; registers.variables + compiled_regs.variables);
-
-                let output_path = PathBuf::current()
-                    .join("build")
-                    .join(format!("{}.lua", relative_file_path));
-
-                let parent = output_path.as_path().parent().unwrap();
-
-                if !parent.exists() {
-                    // make sure the file's parent exists
-                    std::fs::create_dir_all(parent).unwrap();
-                }
-
-                if let Err(e) = write(output_path, compiled.0) {
-                    fcompiler_error!("{e}")
-                }
+                match call.ident.as_str() {
+                    "expr_use" => {
+                        let _ = ExprUse::from((call, &registers));
+                    }
+                    "expr_call" => lua_out.push_str(&ExprCall::from(call).transform()),
+                    _ => fcompiler_general_error(CompilerError::NoSuchFunction, call.ident),
+                };
             }
             _ => {
                 if do_compile {
@@ -337,7 +313,6 @@ pub fn process_file(
 
     define!("@@FARADAY_PATH" = (path.as_path().to_str().unwrap()) >> registers);
     define!("@@FARADAY_NO_COMPILE" = check_only >> registers);
-    define!("@@FARADAY_ANNOTATE" = true >> registers);
 
     // ...
     let mut lua_out: String = String::new();
