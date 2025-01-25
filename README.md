@@ -36,6 +36,7 @@
         * If the file name has a period in it (that isn't the extension), it can be represented using an underscore
     * Expressions can be called using the `expr_call` function in a macro expression: `#[expr_call(file_name, ...]`
         * The `file_name` should be an identifier which exactly matches the name of the file from `expr_use` (just the file with no extension)
+    * Expressions will be called and run using `luajit`. Their return value will automatically be printed to stdout, which will then be pushed to the compiler output instead of the expression incovation.
     * See the example [here](https://github.com/trisuaso/faraday/blob/master/test_fd/syntax_expressions/main.fd)
 
 See the [tests](https://github.com/trisuaso/faraday/tree/master/test_fd) for some language examples!

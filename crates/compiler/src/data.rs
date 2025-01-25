@@ -6,7 +6,9 @@ use crate::checking::{
 use crate::fcompiler_error;
 use parser::{Pair, Rule};
 use serde::{Deserialize, Serialize};
+
 use std::fs::write;
+use std::process::{Command, Stdio};
 use std::sync::{LazyLock, Mutex};
 use std::{collections::BTreeMap, fmt::Display};
 
@@ -1222,7 +1224,8 @@ impl ToLua for Conditional {
     }
 }
 
-pub static COMPILER_EXPRESSIONS: LazyLock<Mutex<BTreeMap<String, Function>>> =
+/// Map containing a tuple with a function value and the path to the temp file it is mapped to.
+pub static COMPILER_EXPRESSIONS: LazyLock<Mutex<BTreeMap<String, (Function, pathbufd::PathBufD)>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::default()));
 
 /// An invocation of the `expr_use` macro "function".
@@ -1274,7 +1277,7 @@ impl<'a> From<(FunctionCall<'a>, &Registers)> for ExprUse {
         };
 
         let fun = registers.get_fn(&format!("expr.{stem}"));
-        lock.insert(stem.clone(), fun);
+        lock.insert(stem.clone(), (fun, crate::tempfile::create()));
 
         // return
         Self(stem)
@@ -1295,7 +1298,7 @@ impl<'a> From<FunctionCall<'a>> for ExprCall {
             Err(_) => fcompiler_error!("poisoned mutex on COMPILER_EXPRESSIONS"),
         };
 
-        let fun = match reader.get(&expr_name) {
+        let (fun, temp_path) = match reader.get(&expr_name) {
             Some(f) => f,
             None => fcompiler_general_error(CompilerError::NoSuchFunction, expr_name),
         };
@@ -1314,10 +1317,29 @@ impl<'a> From<FunctionCall<'a>> for ExprCall {
         }
 
         // build return
-        let lua_out: String = format!("{}\n{expr_name}({arguments_string})", fun.transform());
+        let lua_out: String = format!(
+            "{}\n\nprint({expr_name}({arguments_string}))",
+            fun.transform()
+        );
+
+        // run
+        if let Err(e) = write(temp_path, lua_out) {
+            panic!("{e}");
+        }
+
+        let mut pre_cmd = Command::new("luajit");
+
+        let cmd = pre_cmd
+            .arg(&temp_path.to_string())
+            .current_dir(std::env::temp_dir())
+            .stdout(Stdio::piped())
+            .output()
+            .unwrap();
+
+        let stdout = String::from_utf8_lossy(&cmd.stdout).to_string();
 
         // return
-        Self(lua_out)
+        Self(stdout)
     }
 }
 

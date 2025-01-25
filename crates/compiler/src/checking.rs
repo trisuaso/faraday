@@ -246,7 +246,18 @@ impl Registers {
             // using the colon character; all we need to do is check inside
             // the parent type for the method
             let var = self.get_var(possible_var_name);
-            return self.shallow_get_fn(&format!("{}:{method}", var.r#type.ident));
+
+            if self
+                .functions
+                .contains_key(&format!("{}.{method}", var.r#type.ident))
+            {
+                return self.shallow_get_fn(&format!("{}.{method}", var.r#type.ident));
+            } else if self
+                .functions
+                .contains_key(&format!("{}:{method}", var.r#type.ident))
+            {
+                return self.shallow_get_fn(&format!("{}:{method}", var.r#type.ident));
+            }
         }
 
         // return function

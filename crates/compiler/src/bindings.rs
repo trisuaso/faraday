@@ -67,6 +67,9 @@ pub static FUNCTION_BINDINGS: LazyLock<BTreeMap<String, Function>> = LazyLock::n
     lua_builtin_fn!("tonumber"("value"; "any") -> TYPE_NAME_NUMBER >> map);
     lua_builtin_fn!("tostring"("value"; "any") -> TYPE_NAME_STRING >> map);
 
+    // string
+    lua_builtin_fn!("string.format"("value", "value"; "string", "any") -> TYPE_NAME_STRING >> map);
+
     // io
     lua_builtin_fn!("io.read"("_" ; "empty") -> TYPE_NAME_EMPTY >> map);
     lua_builtin_fn!("io.write"("message"; "string") -> TYPE_NAME_EMPTY >> map);

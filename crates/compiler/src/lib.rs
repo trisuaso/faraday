@@ -9,6 +9,7 @@ use std::{
 pub mod bindings;
 pub mod checking;
 pub mod data;
+pub mod tempfile;
 
 use checking::{
     CompilerError, MultipleTypeChecking, Registers, ToLua, fcompiler_general_error,
@@ -146,10 +147,20 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                     .variables
                     .insert(t.ident.ident.clone(), (t.ident.ident.clone(), ty).into());
             }
-            Rule::for_loop => lua_out.push_str(&ForLoop::from((pair, &registers)).transform()),
-            Rule::while_loop => lua_out.push_str(&WhileLoop::from((pair, &registers)).transform()),
+            Rule::for_loop => {
+                if do_compile {
+                    lua_out.push_str(&ForLoop::from((pair, &registers)).transform())
+                }
+            }
+            Rule::while_loop => {
+                if do_compile {
+                    lua_out.push_str(&WhileLoop::from((pair, &registers)).transform())
+                }
+            }
             Rule::conditional => {
-                lua_out.push_str(&Conditional::from((pair, &registers)).transform())
+                if do_compile {
+                    lua_out.push_str(&Conditional::from((pair, &registers)).transform())
+                }
             }
             Rule::r#impl => {
                 let i = Impl::from((pair, &registers));
@@ -161,7 +172,9 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                         .insert(function.ident.clone(), function.clone());
                 }
 
-                lua_out.push_str(&i.transform());
+                if do_compile {
+                    lua_out.push_str(&i.transform());
+                }
             }
             Rule::r#use => {
                 let mut inner = pair.into_inner();
@@ -233,7 +246,11 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                     "expr_use" => {
                         let _ = ExprUse::from((call, &registers));
                     }
-                    "expr_call" => lua_out.push_str(&ExprCall::from(call).transform()),
+                    "expr_call" => {
+                        if do_compile {
+                            lua_out.push_str(&ExprCall::from(call).transform())
+                        }
+                    }
                     _ => fcompiler_general_error(CompilerError::NoSuchFunction, call.ident),
                 };
             }
