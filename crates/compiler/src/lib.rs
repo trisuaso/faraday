@@ -22,8 +22,8 @@ use data::{
 
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
 
-pub static COMPILER_MARKER: LazyLock<Mutex<String>> =
-    LazyLock::new(|| Mutex::new(String::default()));
+pub static COMPILER_MARKER: LazyLock<Mutex<(String, String)>> =
+    LazyLock::new(|| Mutex::new((String::default(), String::default())));
 
 /// Generate a Lua output from the given parser output
 pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registers) {
@@ -37,7 +37,10 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
 
         // marker
         let span = pair.as_span();
+
         let start = span.start_pos().line_col();
+        let end = span.end_pos().line_col();
+
         let marker = format!(
             "{}:{}:{}",
             registers.get_var("@@FARADAY_PATH").value,
@@ -45,8 +48,20 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             start.1
         );
 
+        let marker_end = format!(
+            "{}:{}:{}",
+            registers.get_var("@@FARADAY_PATH").value,
+            end.0,
+            end.1
+        );
+
         match COMPILER_MARKER.lock() {
-            Ok(mut w) => *w = marker.clone().replace("./", ""),
+            Ok(mut w) => {
+                *w = (
+                    marker.clone().replace("./", ""),
+                    marker_end.clone().replace("./", ""),
+                )
+            }
             Err(_) => COMPILER_MARKER.clear_poison(),
         }
 
@@ -65,6 +80,31 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             }
             Rule::block => {
                 lua_out.push_str(&process(pair.into_inner(), Registers::default()).0);
+            }
+            Rule::r#return => {
+                let return_value = pair.into_inner().next().unwrap();
+
+                match return_value.as_rule() {
+                    Rule::identifier => {
+                        let var = registers.get_var(return_value.as_str());
+
+                        if var.is_referenced {
+                            fcompiler_general_error(CompilerError::NoReturnReference, var.ident);
+                        }
+
+                        if do_compile {
+                            lua_out.push_str(&format!("return {}", var.ident));
+                        }
+                    }
+                    _ => {
+                        if do_compile {
+                            lua_out.push_str(&format!(
+                                "return {}",
+                                process(return_value.into_inner(), registers.clone()).0
+                            ));
+                        }
+                    }
+                }
             }
             Rule::pair => {
                 let variable: Variable = (pair, &registers).into();

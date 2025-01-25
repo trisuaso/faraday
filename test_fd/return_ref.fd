@@ -1,0 +1,6 @@
+fn test() -> String {
+    String variable = "abcd"
+    return &variable
+}
+
+test()

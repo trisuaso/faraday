@@ -51,7 +51,7 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
 value_chunk = _{ value | block }
-chunk       = _{ macro | use | impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | reassignment | pair | value | block }
+chunk       = _{ macro | use | impl | function | type_alias | struct | enum | return | for_loop | while_loop | conditional | reassignment | pair | value | block }
 
 use   = { type_modifier? ~ "use" ~ string ~ "as" ~ identifier }
 macro = { "#" ~ "[" ~ call ~ "]" }
@@ -67,6 +67,7 @@ sync_modifier   =  { "async" | "sync" }
 function        =  { type_modifier? ~ sync_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
 call            =  { identifier ~ "(" ~ (chunk ~ ","?)* ~ ")" }
 block           =  { "{" ~ chunk* ~ "}" }
+return          =  { "return" ~ value_chunk }
 
 impl            = { "impl" ~ identifier ~ impl_block }
 impl_block      = { "{" ~ method* ~ "}" }

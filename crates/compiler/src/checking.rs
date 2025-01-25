@@ -12,6 +12,7 @@ use std::{collections::BTreeMap, fmt::Display};
 pub enum CompilerError {
     InvalidGenericCount,
     ExpectedReference,
+    NoReturnReference,
     CannotAssignConst,
     NoSuchFunction,
     NoSuchVariable,
@@ -28,6 +29,7 @@ impl Display for CompilerError {
         write!(f, "{}", match self {
             InvalidGenericCount => "invalid generic count",
             ExpectedReference => "expected reference, got copy",
+            NoReturnReference => "cannot return reference to variable",
             CannotAssignConst => "cannot assign to constant variable",
             NoSuchFunction => "no such function found in registers",
             NoSuchVariable => "no such variable found in registers",
@@ -54,10 +56,13 @@ pub fn fcompiler_error_print(args: std::fmt::Arguments) -> String {
 macro_rules! fcompiler_error {
     ($($arg:tt)*) => {
         {
+            let marker = $crate::COMPILER_MARKER.lock().unwrap();
+
             println!(
-                "\x1b[31;1merror:\x1b[0m \x1b[1m{}\x1b[0m\n    \x1b[2maround {}\x1b[0m",
+                "\x1b[31;1merror:\x1b[0m \x1b[1m{}\x1b[0m\n    \x1b[2maround {}\x1b[0m\n    \x1b[2mto {}\x1b[0m",
                 $crate::checking::fcompiler_error_print(std::format_args!($($arg)*)),
-                *$crate::COMPILER_MARKER.lock().unwrap()
+                marker.0,
+                marker.1
             );
 
             std::process::exit(1);
