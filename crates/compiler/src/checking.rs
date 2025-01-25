@@ -1,6 +1,7 @@
 use crate::{
     bindings::{
-        FUNCTION_BINDINGS, TYPE_BINDINGS, TYPE_NAME_ANY, TYPE_NAME_STRING, TYPE_NAME_TABLE,
+        FUNCTION_BINDINGS, TYPE_BINDINGS, TYPE_NAME_ANY, TYPE_NAME_REF, TYPE_NAME_STRING,
+        TYPE_NAME_TABLE,
     },
     data::{Function, FunctionCall, Type, Variable},
 };
@@ -10,6 +11,7 @@ use std::{collections::BTreeMap, fmt::Display};
 
 pub enum CompilerError {
     InvalidGenericCount,
+    ExpectedReference,
     CannotAssignConst,
     NoSuchFunction,
     NoSuchVariable,
@@ -25,6 +27,7 @@ impl Display for CompilerError {
         use CompilerError::*;
         write!(f, "{}", match self {
             InvalidGenericCount => "invalid generic count",
+            ExpectedReference => "expected reference, got copy",
             CannotAssignConst => "cannot assign to constant variable",
             NoSuchFunction => "no such function found in registers",
             NoSuchVariable => "no such variable found in registers",
@@ -144,9 +147,30 @@ impl Registers {
         }
     }
 
+    pub fn get_var_ref(&self, key: &str) -> Variable {
+        let mut var = self.get_var(key);
+        var.is_referenced = true;
+        var
+    }
+
     pub fn get_var(&self, key: &str) -> Variable {
         let mut key_split = key.split("[");
-        let true_key = key_split.next().unwrap();
+        let mut attempting_to_reference = false;
+        let true_key = {
+            let val = key_split.next().unwrap();
+
+            if val.starts_with("&") {
+                attempting_to_reference = true;
+            }
+
+            if attempting_to_reference {
+                // we're trying to reference another variable here...
+                // remove reference character and fetch variable again
+                return self.get_var_ref(&key.replace("&", ""));
+            } else {
+                val.to_string()
+            }
+        };
 
         let mut property_key_split = key.split(".");
         let possible_root_name = property_key_split.next().unwrap();
@@ -202,7 +226,7 @@ impl Registers {
             // this means that our `true_key` is ACTUALLY the identifier of a
             // table... we need to get *that* table variable, and THEN return a
             // variable with the correct generic type
-            let table = self.get_var(true_key);
+            let table = self.get_var(&true_key);
 
             if table.r#type.ident != TYPE_NAME_TABLE {
                 if table.r#type.ident == TYPE_NAME_STRING {
@@ -223,10 +247,17 @@ impl Registers {
         }
 
         // return variable
-        match self.variables.get(true_key) {
+        let var = match self.variables.get(&true_key) {
             Some(v) => v.to_owned(),
             None => fcompiler_general_error(CompilerError::NoSuchVariable, true_key.to_string()),
+        };
+
+        if var.r#type.ident == TYPE_NAME_REF {
+            // this is a reference to another variable... return that one
+            return self.get_var_ref(&var.value);
         }
+
+        var
     }
 
     /// [`get_var`] which doesn't dig through properties to find the variable.

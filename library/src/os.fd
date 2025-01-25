@@ -1,6 +1,6 @@
 pub enum OsType {
-    string Win = "win";
-    string Unix = "unix";
+    String Win = "win";
+    String Unix = "unix";
 }
 
 pub fn os_type() -> OsType {

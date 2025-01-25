@@ -269,7 +269,8 @@ pub struct Variable {
     pub r#type: Type,
     pub value: String,
     pub visibility: TypeVisibility,
-    pub constant: ConstantModifier,
+    pub mutable: MutabilityModifier,
+    pub is_referenced: bool,
 }
 
 impl ToLua for Variable {
@@ -285,7 +286,8 @@ impl From<(String, Type)> for Variable {
             r#type: value.1,
             value: String::new(),
             visibility: TypeVisibility::Private,
-            constant: ConstantModifier::Inconstant,
+            mutable: MutabilityModifier::Constant,
+            is_referenced: false,
         }
     }
 }
@@ -297,7 +299,8 @@ impl From<(String, Type, TypeVisibility)> for Variable {
             r#type: value.1,
             value: String::new(),
             visibility: value.2,
-            constant: ConstantModifier::Inconstant,
+            mutable: MutabilityModifier::Constant,
+            is_referenced: false,
         }
     }
 }
@@ -310,7 +313,7 @@ impl From<Pair<'_, Rule>> for Variable {
         let mut r#type = Type::default();
         let mut value: String = String::new();
         let mut visibility: TypeVisibility = TypeVisibility::Private;
-        let mut constant: ConstantModifier = ConstantModifier::Inconstant;
+        let mut mutable: MutabilityModifier = MutabilityModifier::Constant;
 
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
@@ -319,9 +322,15 @@ impl From<Pair<'_, Rule>> for Variable {
             fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
 
             match rule {
-                Rule::identifier => name = pair.as_str().to_string(),
+                Rule::identifier => {
+                    if name.is_empty() {
+                        name = pair.as_str().to_string()
+                    } else {
+                        value = pair.as_str().to_string()
+                    }
+                }
                 Rule::type_modifier => visibility = pair.into(),
-                Rule::constant_modifier => constant = pair.into(),
+                Rule::mutability_modifier => mutable = pair.into(),
                 Rule::r#type => r#type = pair.into(),
                 _ => {
                     value = match rule {
@@ -350,7 +359,8 @@ impl From<Pair<'_, Rule>> for Variable {
             r#type,
             value,
             visibility,
-            constant,
+            mutable,
+            is_referenced: false,
         }
     }
 }
@@ -364,7 +374,7 @@ impl From<(Pair<'_, Rule>, &Registers)> for Variable {
         let mut r#type = Type::default();
         let mut value: String = String::new();
         let mut visibility: TypeVisibility = TypeVisibility::Private;
-        let mut constant: ConstantModifier = ConstantModifier::Inconstant;
+        let mut mutable: MutabilityModifier = MutabilityModifier::Constant;
 
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
@@ -373,9 +383,25 @@ impl From<(Pair<'_, Rule>, &Registers)> for Variable {
             fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
 
             match rule {
-                Rule::identifier => name = pair.as_str().to_string(),
+                Rule::identifier => {
+                    if name.is_empty() {
+                        name = pair.as_str().to_string()
+                    } else {
+                        let var = reg.get_var(pair.as_str());
+
+                        // since we're assigning the value of another variable to this
+                        // variable, we need to make sure we referenced the other variable
+                        if !var.is_referenced {
+                            fcompiler_general_error(CompilerError::ExpectedReference, var.ident);
+                        }
+
+                        // ...
+                        value = var.ident;
+                        r#type = TYPE_NAME_REF.into();
+                    }
+                }
                 Rule::type_modifier => visibility = pair.into(),
-                Rule::constant_modifier => constant = pair.into(),
+                Rule::mutability_modifier => mutable = pair.into(),
                 Rule::r#type => r#type = (pair, reg).into(),
                 _ => {
                     value = match rule {
@@ -430,7 +456,8 @@ impl From<(Pair<'_, Rule>, &Registers)> for Variable {
             r#type,
             value,
             visibility,
-            constant,
+            mutable,
+            is_referenced: false,
         }
     }
 }
@@ -495,7 +522,7 @@ impl Type {
         let rule = pair.as_rule();
         match rule {
             Rule::string => (TYPE_NAME_STRING, TypeVisibility::Public).to_owned().into(),
-            Rule::int => (TYPE_NAME_INT, TypeVisibility::Public).to_owned().into(),
+            Rule::integer => (TYPE_NAME_INT, TypeVisibility::Public).to_owned().into(),
             Rule::float => (TYPE_NAME_FLOAT, TypeVisibility::Public).to_owned().into(),
             Rule::identifier => {
                 // since this is a variable reference, we must get the type of that
@@ -841,24 +868,24 @@ impl Display for TypeVisibility {
     }
 }
 
-/// If the variable is constant or inconstant.
+/// If the variable is constant or mutable.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ConstantModifier {
+pub enum MutabilityModifier {
+    Mutable,
     Constant,
-    Inconstant,
 }
 
-impl From<Pair<'_, Rule>> for ConstantModifier {
+impl From<Pair<'_, Rule>> for MutabilityModifier {
     fn from(value: Pair<Rule>) -> Self {
         match value.as_str() {
-            "const" => ConstantModifier::Constant,
-            "incon" => ConstantModifier::Inconstant,
+            "mut" => MutabilityModifier::Mutable,
+            "const" => MutabilityModifier::Constant,
             _ => unreachable!("reached impossible constant modifier value"),
         }
     }
 }
 
-impl Display for ConstantModifier {
+impl Display for MutabilityModifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", "")
     }

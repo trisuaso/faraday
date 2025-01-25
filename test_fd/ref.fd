@@ -1,0 +1,3 @@
+String msg = "Hello, world!"
+String msg_ref = &msg
+print(msg_ref)

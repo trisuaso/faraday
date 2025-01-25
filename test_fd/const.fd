@@ -1,3 +1,6 @@
-const number var = 1
+mut int mutable_var = 1
+mutable_var = 10
+
+int var = 1
 var = 5 // we should receive an error here
 print(tostring(var))

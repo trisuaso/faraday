@@ -1,21 +1,21 @@
 pub struct TestStruct {
-    string field;
-    string field_1;
+    String field;
+    String field_1;
 }
 
 impl TestStruct {
     // special function which will set the metatable of TestStruct
     // this "new" function ONLY works with static functions named "new"
-    static fn new(string field) -> TestStruct {
+    static fn new(String field) -> TestStruct {
         self.field = field
     }
 
-    fn echo_field() -> string {
+    fn echo_field() -> String {
         self.field_1 = "This field was added through a method."
         return self.field
     }
 
-    static fn static_method() -> string {
+    static fn static_method() -> String {
         print("static method called")
     }
 }

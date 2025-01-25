@@ -16,8 +16,8 @@ use checking::{
     fcompiler_general_marker, fcompiler_type_error,
 };
 use data::{
-    Conditional, ConstantModifier, ExprCall, ExprUse, ForLoop, Function, FunctionCall, Impl, Type,
-    TypeAlias, TypeVisibility, Variable, WhileLoop, use_file,
+    Conditional, ExprCall, ExprUse, ForLoop, Function, FunctionCall, Impl, MutabilityModifier,
+    Type, TypeAlias, TypeVisibility, Variable, WhileLoop, use_file,
 };
 
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
@@ -76,12 +76,13 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 registers.variables.insert(variable.ident.clone(), variable);
             }
             Rule::reassignment => {
+                dbg!(&pair);
                 let mut variable: Variable = pair.clone().into();
                 variable.visibility = TypeVisibility::Public; // must be public or reassignment isn't valid in lua
 
                 if let Some(var) = registers.variables.get(&variable.ident) {
                     // check const
-                    if var.constant == ConstantModifier::Constant {
+                    if var.mutable == MutabilityModifier::Constant {
                         fcompiler_general_error(
                             CompilerError::CannotAssignConst,
                             var.ident.clone(),
@@ -286,23 +287,14 @@ macro_rules! publish_register {
 }
 
 macro_rules! define {
-    ($name:literal = $value:literal >> $registers:ident) => {
-        $registers.variables.insert($name.to_string(), Variable {
-            ident: $name.to_string(),
-            r#type: TYPE_NAME_ANY.into(),
-            value: $value.to_string(),
-            visibility: $crate::data::TypeVisibility::Private,
-            constant: $crate::data::ConstantModifier::Constant,
-        });
-    };
-
     ($name:literal = $value:ident >> $registers:ident) => {
         $registers.variables.insert($name.to_string(), Variable {
             ident: $name.to_string(),
             r#type: TYPE_NAME_ANY.into(),
             value: $value.to_string(),
             visibility: $crate::data::TypeVisibility::Private,
-            constant: $crate::data::ConstantModifier::Constant,
+            mutable: $crate::data::MutabilityModifier::Constant,
+            is_referenced: false,
         });
     };
 
@@ -312,7 +304,8 @@ macro_rules! define {
             r#type: TYPE_NAME_ANY.into(),
             value: $value.to_string(),
             visibility: $crate::data::TypeVisibility::Private,
-            constant: $crate::data::ConstantModifier::Constant,
+            mutable: $crate::data::MutabilityModifier::Constant,
+            is_referenced: false,
         });
     };
 }

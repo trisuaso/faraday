@@ -1,4 +1,4 @@
-Table<string string> t = {
+Table<String String> t = {
     abcd = "12345"
 }
 

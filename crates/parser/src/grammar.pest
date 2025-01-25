@@ -1,17 +1,17 @@
 document = { SOI ~ (chunk)* ~ EOI }
 
-constant_modifier = { "const" | "incon" }
-pair  =  { type_modifier? ~ constant_modifier? ~ type ~ identifier ~ "=" ~ value_chunk }
-reassignment = { identifier ~ "=" ~ value }
-key   = @{ identifier | string | ("[" ~ int ~ "]") }
-item  =  { key ~ "=" ~ value }
-table =  { "{" ~ (item ~ ","?)* ~ "}" }
+mutability_modifier =  { "mut" | "const" }
+pair                =  { type_modifier? ~ mutability_modifier? ~ type ~ identifier ~ "=" ~ value_chunk }
+reassignment        =  { identifier ~ "=" ~ value }
+key                 = @{ identifier | string | ("[" ~ int ~ "]") }
+item                =  { key ~ "=" ~ value }
+table               =  { "{" ~ (item ~ ","?)* ~ "}" }
 
 value = _{
     call
   | string
-  | float
   | integer
+  | float
   | boolean
   | item
   | table
@@ -28,7 +28,7 @@ comparison         = { primitive ~ (">=" | "<=" | "<" | ">" | "!=" | "==" | "and
 ordered_mathematical = { "(" ~ mathematical ~ ")" }
 mathematical         = { primitive ~ ("+" | "-" | "*" | "/") ~ primitive }
 
-identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]" | "$" | "#")+ }
+identifier      = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "[" | "]" | "$" | "#" | "&")+ }
 generic         =  { "<" ~ (identifier ~ ","?)+ ~ ">" }
 type            =  { identifier ~ generic? }
 typed_parameter =  { type ~ identifier }
@@ -51,9 +51,9 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
 value_chunk = _{ value | block }
-chunk = _{ macro | use | impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | reassignment | pair | value | block }
+chunk       = _{ macro | use | impl | function | type_alias | struct | enum | for_loop | while_loop | conditional | reassignment | pair | value | block }
 
-use = { type_modifier? ~ "use" ~ string ~ "as" ~ identifier }
+use   = { type_modifier? ~ "use" ~ string ~ "as" ~ identifier }
 macro = { "#" ~ "[" ~ call ~ "]" }
 
 for_loop           = { "for" ~ "(" ~ (identifier ~ ","?)* ~ ")" ~ "in" ~ value ~ block }

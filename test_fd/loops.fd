@@ -1,4 +1,4 @@
-Table<number string> array = {
+Table<int, String> array = {
     [0] = "Hello, world!",
     [1] = "Hello, world! 1"
 }
@@ -7,8 +7,8 @@ for (i,v) in ipairs(array) {
     print(i, v)
 }
 
-number a = 0
-number max = 10
+int a = 0
+int max = 10
 
 while (a < max) {
     a = (a + 1)
