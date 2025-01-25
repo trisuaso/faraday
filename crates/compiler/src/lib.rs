@@ -13,7 +13,7 @@ pub mod tempfile;
 
 use checking::{
     CompilerError, MultipleTypeChecking, Registers, ToLua, fcompiler_general_error,
-    fcompiler_general_marker, fcompiler_type_error,
+    fcompiler_type_error,
 };
 use data::{
     Conditional, ExprCall, ExprUse, ForLoop, Function, FunctionCall, Impl, MutabilityModifier,
@@ -50,7 +50,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             Err(_) => COMPILER_MARKER.clear_poison(),
         }
 
-        fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
+        // fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
 
         // ...
         match rule {
@@ -76,7 +76,6 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 registers.variables.insert(variable.ident.clone(), variable);
             }
             Rule::reassignment => {
-                dbg!(&pair);
                 let mut variable: Variable = pair.clone().into();
                 variable.visibility = TypeVisibility::Public; // must be public or reassignment isn't valid in lua
 

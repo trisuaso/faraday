@@ -190,9 +190,6 @@ impl From<(Pair<'_, Rule>, &Registers)> for Function {
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
 
-            let span = pair.as_span();
-            fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
-
             match rule {
                 Rule::identifier => {
                     name = pair.as_str().to_string();
@@ -318,9 +315,6 @@ impl From<Pair<'_, Rule>> for Variable {
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
 
-            let span = pair.as_span();
-            fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
-
             match rule {
                 Rule::identifier => {
                     if name.is_empty() {
@@ -378,9 +372,6 @@ impl From<(Pair<'_, Rule>, &Registers)> for Variable {
 
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
-
-            let span = pair.as_span();
-            fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
 
             match rule {
                 Rule::identifier => {
@@ -636,9 +627,6 @@ impl From<Pair<'_, Rule>> for Type {
         for pair in inner {
             let rule = pair.as_rule();
 
-            let span = pair.as_span();
-            fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
-
             match rule {
                 Rule::generic => {
                     let inner = pair.into_inner();
@@ -815,9 +803,6 @@ impl From<Pair<'_, Rule>> for TypeAlias {
         for pair in inner {
             let rule = pair.as_rule();
 
-            let span = pair.as_span();
-            fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
-
             match rule {
                 Rule::type_modifier => visibility = pair.into(),
                 Rule::r#type => {
@@ -925,9 +910,6 @@ impl<'a> From<Pair<'a, Rule>> for FunctionCall<'a> {
 
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
-
-            let span = pair.as_span();
-            fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
 
             match rule {
                 Rule::identifier => {
@@ -1081,9 +1063,6 @@ impl From<(Pair<'_, Rule>, &Registers)> for ForLoop {
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
 
-            let span = pair.as_span();
-            fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
-
             match rule {
                 Rule::identifier => idents.push(pair.as_str().to_string()),
                 Rule::block => {
@@ -1155,9 +1134,6 @@ impl From<(Pair<'_, Rule>, &Registers)> for WhileLoop {
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
 
-            let span = pair.as_span();
-            fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
-
             match rule {
                 Rule::block => block = crate::process(pair.into_inner(), regs.clone()).0,
                 _ => condition = pair.as_str().to_string(),
@@ -1201,9 +1177,6 @@ impl From<(Pair<'_, Rule>, &Registers)> for Conditional {
 
         while let Some(pair) = inner.next() {
             let rule = pair.as_rule();
-
-            let span = pair.as_span();
-            fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
 
             match rule {
                 Rule::block => block = crate::process(pair.into_inner(), regs.clone()).0,
