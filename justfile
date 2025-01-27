@@ -3,6 +3,3 @@ test test="echo.fd" exec="luajit":
 
 test-lib exec="luajit":
     cd library && cargo run --bin faradayc -- src/main.fd -r={{exec}}
-
-build-lib:
-    cd library && cargo run --bin faradayc -- src/main.fd

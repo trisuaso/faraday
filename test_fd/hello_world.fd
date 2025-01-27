@@ -1,1 +1,5 @@
-print("Hello, world!")
+fn test() -> void {
+    print("Hello, world!")
+}
+
+test()

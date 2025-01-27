@@ -1,6 +1,6 @@
 #[expr_use("./test_expr")]
 
-fn test() -> # {
+fn test() -> void {
     #[expr_call(test_expr, "Hello from expression!")]
     print("Hello, world!")
 }

@@ -1,8 +1,9 @@
 use crate::bindings::*;
 use crate::checking::{
-    CompilerError, MultipleGenericChecking, MultipleTypeChecking, Registers, ToLua, TypeChecking,
-    fcompiler_general_error, fcompiler_general_marker,
+    CompilerError, MultipleGenericChecking, MultipleTypeChecking, Registers, ToSource,
+    TypeChecking, fcompiler_general_error, fcompiler_general_marker,
 };
+use crate::config::COMPILER_TEMPLATES;
 use crate::fcompiler_error;
 use parser::{Pair, Rule};
 use serde::{Deserialize, Serialize};
@@ -135,40 +136,40 @@ pub struct Function {
 
 impl Function {
     pub fn args_string(&self) -> String {
-        let mut lua_out: String = String::new();
+        let config = COMPILER_TEMPLATES.read().unwrap();
+        let mut src_out: String = String::new();
 
         for (i, param) in self.arguments.keys.clone().iter().enumerate() {
             if i != self.arguments.keys.len() - 1 {
-                lua_out.push_str(&format!("{param}, "));
+                src_out.push_str(&config.arg.replace("$param", param));
             } else {
-                lua_out.push_str(&format!("{param}"));
+                src_out.push_str(&config.last_arg.replace("$param", param));
             }
         }
 
-        lua_out
+        src_out
     }
 }
 
-impl ToLua for Function {
+impl ToSource for Function {
     fn transform(&self) -> String {
+        let config = COMPILER_TEMPLATES.read().unwrap();
         if self.execution == ExecutionType::Async {
             // async coroutine function
-            format!(
-                "{}{} = function ({})\n   return coroutine.create(function ()\n    {}\nend)\nend\n",
-                self.visibility.to_string(),
-                self.ident,
-                self.args_string(),
-                self.body
-            )
+            config
+                .async_function
+                .replace("$visibility", &self.visibility.to_string())
+                .replace("$ident", &self.ident)
+                .replace("$args", &self.args_string())
+                .replace("$body", &self.body)
         } else {
             // regular, sync function
-            format!(
-                "{}function {}({})\n    {}\nend\n",
-                self.visibility.to_string(),
-                self.ident,
-                self.args_string(),
-                self.body
-            )
+            config
+                .function
+                .replace("$visibility", &self.visibility.to_string())
+                .replace("$ident", &self.ident)
+                .replace("$args", &self.args_string())
+                .replace("$body", &self.body)
         }
     }
 }
@@ -270,9 +271,15 @@ pub struct Variable {
     pub is_referenced: bool,
 }
 
-impl ToLua for Variable {
+impl ToSource for Variable {
     fn transform(&self) -> String {
-        format!("{}{} = {}\n", self.visibility, self.ident, self.value)
+        let config = COMPILER_TEMPLATES.read().unwrap();
+        config
+            .variable
+            .replace("$visibility", &self.visibility.to_string())
+            .replace("$ident", &self.ident)
+            .replace("$value", &self.value)
+            .replace("$typename", &self.r#type.ident)
     }
 }
 
@@ -646,24 +653,10 @@ impl From<Pair<'_, Rule>> for Type {
                     ident = t.ident;
                 }
                 Rule::struct_block => {
-                    let span = pair.as_span();
-                    fcompiler_general_marker(
-                        rule,
-                        span.start_pos().line_col(),
-                        span.end_pos().line_col(),
-                    );
-
                     let mut inner = pair.into_inner();
 
                     while let Some(pair) = inner.next() {
                         let rule = pair.as_rule();
-
-                        let span = pair.as_span();
-                        fcompiler_general_marker(
-                            rule,
-                            span.start_pos().line_col(),
-                            span.end_pos().line_col(),
-                        );
 
                         match rule {
                             Rule::struct_type => {
@@ -675,13 +668,6 @@ impl From<Pair<'_, Rule>> for Type {
                                 let mut inner = pair.into_inner();
                                 while let Some(pair) = inner.next() {
                                     let rule = pair.as_rule();
-
-                                    let span = pair.as_span();
-                                    fcompiler_general_marker(
-                                        rule,
-                                        span.start_pos().line_col(),
-                                        span.end_pos().line_col(),
-                                    );
 
                                     match rule {
                                         Rule::type_modifier => visibility = pair.into(),
@@ -758,20 +744,34 @@ impl Default for Type {
     }
 }
 
-impl ToLua for Type {
+impl ToSource for Type {
     fn transform(&self) -> String {
+        let config = COMPILER_TEMPLATES.read().unwrap();
+
         if !self.variants.is_empty() {
             // enum, create with variants in table
-            let mut out = format!("{}{} = {{\n", self.visibility, self.ident);
+            let mut body: String = String::new();
 
             for variant in &self.variants {
-                out.push_str(&format!("{} = {},\n", variant.0, variant.1.value));
+                body.push_str(
+                    &config
+                        .enum_field
+                        .replace("$ident", variant.0)
+                        .replace("$value", &variant.1.value),
+                );
             }
 
-            return format!("{out}\n}}\n");
+            return config
+                .r#enum
+                .replace("$visibility", &self.visibility.to_string())
+                .replace("$ident", &self.ident)
+                .replace("$body", &body);
         }
 
-        format!("{}{} = {{}}\n", self.visibility, self.ident)
+        config
+            .r#type
+            .replace("$visibility", &self.visibility.to_string())
+            .replace("$ident", &self.ident)
     }
 }
 
@@ -782,12 +782,15 @@ pub struct TypeAlias {
     pub visibility: TypeVisibility,
 }
 
-impl ToLua for TypeAlias {
+impl ToSource for TypeAlias {
     fn transform(&self) -> String {
-        format!(
-            "{}{} = {}\n",
-            self.visibility, self.ident.ident, self.r#type.ident
-        )
+        let config = COMPILER_TEMPLATES.read().unwrap();
+
+        config
+            .type_alias
+            .replace("$visibility", &self.visibility.to_string())
+            .replace("$ident", &self.ident.transform())
+            .replace("$value", &self.r#type.ident)
     }
 }
 
@@ -846,9 +849,11 @@ impl From<Pair<'_, Rule>> for TypeVisibility {
 
 impl Display for TypeVisibility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let config = COMPILER_TEMPLATES.read().unwrap();
+
         write!(f, "{}", match self {
-            Self::Public => "",
-            Self::Private => "local ",
+            Self::Public => config.visibility_public,
+            Self::Private => config.visibility_private,
         })
     }
 }
@@ -872,7 +877,12 @@ impl From<Pair<'_, Rule>> for MutabilityModifier {
 
 impl Display for MutabilityModifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", "")
+        let config = COMPILER_TEMPLATES.read().unwrap();
+
+        write!(f, "{}", match self {
+            Self::Mutable => config.mutability_mutable,
+            Self::Constant => config.mutability_constant,
+        })
     }
 }
 
@@ -882,7 +892,7 @@ pub struct FunctionCall<'a> {
     /// The identifier of the function.
     pub ident: String,
     pub arguments: Vec<Pair<'a, Rule>>,
-    pub lua_out: String,
+    pub src_out: String,
 }
 
 impl FunctionCall<'_> {
@@ -900,7 +910,9 @@ impl FunctionCall<'_> {
 
 impl<'a> From<Pair<'a, Rule>> for FunctionCall<'a> {
     fn from(value: Pair<'a, Rule>) -> Self {
-        let mut lua_out: String = String::new();
+        let config = COMPILER_TEMPLATES.read().unwrap();
+
+        let mut src_out: String = String::new();
         let mut inner = value.into_inner();
 
         let mut ident: String = String::new();
@@ -946,22 +958,32 @@ impl<'a> From<Pair<'a, Rule>> for FunctionCall<'a> {
         }
 
         if is_async {
-            lua_out.push_str(&format!("select(2, coroutine.resume({ident}({args})))\n"));
+            src_out.push_str(
+                &config
+                    .async_call
+                    .replace("$ident", &ident)
+                    .replace("$args", &args),
+            );
         } else {
-            lua_out.push_str(&format!("{ident}({args})\n"));
+            src_out.push_str(
+                &config
+                    .call
+                    .replace("$ident", &ident)
+                    .replace("$args", &args),
+            );
         }
 
         Self {
             ident,
-            lua_out,
+            src_out,
             arguments: args_vec,
         }
     }
 }
 
-impl ToLua for FunctionCall<'_> {
+impl ToSource for FunctionCall<'_> {
     fn transform(&self) -> String {
-        self.lua_out.to_owned()
+        self.src_out.to_owned()
     }
 }
 
@@ -984,9 +1006,9 @@ impl From<(Pair<'_, Rule>, &Registers)> for Impl {
             let rule = pair.as_rule();
             match rule {
                 Rule::identifier => {
-                    // make sure variable exists
-                    let var = regs.get_var(pair.as_str());
-                    ident = var.ident
+                    // make sure type exists
+                    let r#type = regs.get_type(pair.as_str());
+                    ident = r#type.ident
                 }
                 Rule::impl_block => {
                     let mut inner = pair.into_inner();
@@ -1003,6 +1025,7 @@ impl From<(Pair<'_, Rule>, &Registers)> for Impl {
                         match rule {
                             Rule::method => {
                                 let mut function: Function = (pair, regs).into();
+                                // TODO: add config translations
 
                                 if function.association == AssociationType::Static {
                                     // period
@@ -1028,15 +1051,15 @@ impl From<(Pair<'_, Rule>, &Registers)> for Impl {
     }
 }
 
-impl ToLua for Impl {
+impl ToSource for Impl {
     fn transform(&self) -> String {
-        let mut lua_out = String::new();
+        let mut src_out = String::new();
 
         for function in &self.functions {
-            lua_out.push_str(&function.transform());
+            src_out.push_str(&function.transform());
         }
 
-        lua_out
+        src_out
     }
 }
 
@@ -1092,11 +1115,13 @@ impl From<(Pair<'_, Rule>, &Registers)> for ForLoop {
     }
 }
 
-impl ToLua for ForLoop {
+impl ToSource for ForLoop {
     fn transform(&self) -> String {
-        format!(
-            "for {} in {} do\n{}\nend\n",
-            {
+        let config = COMPILER_TEMPLATES.read().unwrap();
+
+        config
+            .r#for
+            .replace("$idents", &{
                 let mut out = String::new();
 
                 for (i, ident) in self.idents.iter().enumerate() {
@@ -1108,10 +1133,9 @@ impl ToLua for ForLoop {
                 }
 
                 out
-            },
-            self.iterator,
-            self.block
-        )
+            })
+            .replace("$iter", &self.iterator)
+            .replace("$body", &self.block)
     }
 }
 
@@ -1144,9 +1168,14 @@ impl From<(Pair<'_, Rule>, &Registers)> for WhileLoop {
     }
 }
 
-impl ToLua for WhileLoop {
+impl ToSource for WhileLoop {
     fn transform(&self) -> String {
-        format!("while {} do\n{}\nend\n", self.condition, self.block)
+        let config = COMPILER_TEMPLATES.read().unwrap();
+
+        config
+            .r#while
+            .replace("$condition", &self.condition)
+            .replace("$body", &self.block)
     }
 }
 
@@ -1207,20 +1236,31 @@ impl From<(Pair<'_, Rule>, &Registers)> for Conditional {
     }
 }
 
-impl ToLua for Conditional {
+impl ToSource for Conditional {
     fn transform(&self) -> String {
-        format!(
-            "\n{} {}{}\n{}\n{}",
-            self.keyword,
-            self.condition,
-            if self.keyword == "else" { "" } else { " then" },
-            self.block,
-            if !self.block.ends_with("end\n") {
-                "end\n"
-            } else {
-                ""
-            }
-        )
+        let config = COMPILER_TEMPLATES.read().unwrap();
+
+        config
+            .conditional
+            .replace("$keyword", &self.keyword)
+            .replace("$condition", &self.condition)
+            .replace(
+                "$opening",
+                if self.keyword == "else" {
+                    config.conditional_opening_else
+                } else {
+                    config.conditional_opening_no_else
+                },
+            )
+            .replace("$body", &self.block)
+            .replace(
+                "$closing",
+                if !self.block.ends_with(config.conditional_closing) {
+                    config.conditional_closing
+                } else {
+                    ""
+                },
+            )
     }
 }
 
@@ -1285,6 +1325,8 @@ impl<'a> From<(FunctionCall<'a>, &Registers)> for ExprUse {
 }
 
 /// An invocation of the `expr_call` macro "function".
+///
+/// Expressions **must** be written in Lua and **must** be run with `luajit`.
 pub struct ExprCall(pub String);
 
 impl<'a> From<FunctionCall<'a>> for ExprCall {
@@ -1317,13 +1359,13 @@ impl<'a> From<FunctionCall<'a>> for ExprCall {
         }
 
         // build return
-        let lua_out: String = format!(
+        let src_out: String = format!(
             "{}\n\nprint({expr_name}({arguments_string}))",
             fun.transform()
         );
 
         // run
-        if let Err(e) = write(temp_path, lua_out) {
+        if let Err(e) = write(temp_path, src_out) {
             panic!("{e}");
         }
 
@@ -1343,7 +1385,7 @@ impl<'a> From<FunctionCall<'a>> for ExprCall {
     }
 }
 
-impl ToLua for ExprCall {
+impl ToSource for ExprCall {
     fn transform(&self) -> String {
         self.0.to_owned()
     }

@@ -1,3 +1,0 @@
-pub use "./os" as os
-
-print(tostring(os.os_type()))

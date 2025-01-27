@@ -8,11 +8,12 @@ use std::{
 
 pub mod bindings;
 pub mod checking;
+pub mod config;
 pub mod data;
 pub mod tempfile;
 
 use checking::{
-    CompilerError, MultipleTypeChecking, Registers, ToLua, fcompiler_general_error,
+    CompilerError, MultipleTypeChecking, Registers, ToSource, fcompiler_general_error,
     fcompiler_type_error,
 };
 use data::{
@@ -30,7 +31,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
     fcompiler_marker!("{}", registers.get_var("@@FARADAY_PATH").value);
     let do_compile = registers.get_var("@@FARADAY_NO_COMPILE").value == "false";
 
-    let mut lua_out = String::new();
+    let mut src_out = String::new();
 
     for pair in input {
         let rule = pair.as_rule();
@@ -65,21 +66,19 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             Err(_) => COMPILER_MARKER.clear_poison(),
         }
 
-        // fcompiler_general_marker(rule, span.start_pos().line_col(), span.end_pos().line_col());
-
         // ...
         match rule {
             Rule::function => {
                 let function: Function = (pair, &registers).into();
 
                 if do_compile {
-                    lua_out.push_str(&function.transform());
+                    src_out.push_str(&function.transform());
                 }
 
                 registers.functions.insert(function.ident.clone(), function);
             }
             Rule::block => {
-                lua_out.push_str(&process(pair.into_inner(), Registers::default()).0);
+                src_out.push_str(&process(pair.into_inner(), Registers::default()).0);
             }
             Rule::r#return => {
                 let return_value = pair.into_inner().next().unwrap();
@@ -93,12 +92,12 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                         }
 
                         if do_compile {
-                            lua_out.push_str(&format!("return {}", var.ident));
+                            src_out.push_str(&format!("return {}", var.ident));
                         }
                     }
                     _ => {
                         if do_compile {
-                            lua_out.push_str(&format!(
+                            src_out.push_str(&format!(
                                 "return {}",
                                 process(return_value.into_inner(), registers.clone()).0
                             ));
@@ -110,7 +109,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 let variable: Variable = (pair, &registers).into();
 
                 if do_compile {
-                    lua_out.push_str(&variable.transform());
+                    src_out.push_str(&variable.transform());
                 }
 
                 registers.variables.insert(variable.ident.clone(), variable);
@@ -135,9 +134,9 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 }
 
                 if do_compile && !variable.r#type.ident.is_empty() {
-                    lua_out.push_str(&variable.transform());
+                    src_out.push_str(&variable.transform());
                 } else if variable.r#type.ident.is_empty() {
-                    lua_out.push_str(pair.as_str());
+                    src_out.push_str(pair.as_str());
                 }
             }
             Rule::call => {
@@ -146,14 +145,14 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 call.check_multiple(supplied_types, &registers);
 
                 if do_compile {
-                    lua_out.push_str(&call.transform());
+                    src_out.push_str(&call.transform());
                 }
             }
             Rule::r#struct => {
                 let t = Type::from(pair);
 
                 if do_compile {
-                    lua_out.push_str(&t.transform());
+                    src_out.push_str(&t.transform());
                 }
 
                 registers.types.insert(t.ident.clone(), t.clone());
@@ -165,7 +164,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 let t = Type::from(pair);
 
                 if do_compile {
-                    lua_out.push_str(&t.transform());
+                    src_out.push_str(&t.transform());
                 }
 
                 registers.types.insert(t.ident.clone(), t.clone());
@@ -177,7 +176,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 let t = TypeAlias::from(pair);
 
                 if do_compile {
-                    lua_out.push_str(&t.transform());
+                    src_out.push_str(&t.transform());
                 }
 
                 let mut ty = registers.get_type(&t.r#type.ident);
@@ -189,17 +188,17 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             }
             Rule::for_loop => {
                 if do_compile {
-                    lua_out.push_str(&ForLoop::from((pair, &registers)).transform())
+                    src_out.push_str(&ForLoop::from((pair, &registers)).transform())
                 }
             }
             Rule::while_loop => {
                 if do_compile {
-                    lua_out.push_str(&WhileLoop::from((pair, &registers)).transform())
+                    src_out.push_str(&WhileLoop::from((pair, &registers)).transform())
                 }
             }
             Rule::conditional => {
                 if do_compile {
-                    lua_out.push_str(&Conditional::from((pair, &registers)).transform())
+                    src_out.push_str(&Conditional::from((pair, &registers)).transform())
                 }
             }
             Rule::r#impl => {
@@ -213,7 +212,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 }
 
                 if do_compile {
-                    lua_out.push_str(&i.transform());
+                    src_out.push_str(&i.transform());
                 }
             }
             Rule::r#use => {
@@ -247,7 +246,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                 }
 
                 if do_compile {
-                    lua_out.push_str(&format!(
+                    src_out.push_str(&format!(
                         "local {ident} = require \"{relative_file_path}\"\n"
                     ));
                 }
@@ -288,7 +287,7 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
                     }
                     "expr_call" => {
                         if do_compile {
-                            lua_out.push_str(&ExprCall::from(call).transform())
+                            src_out.push_str(&ExprCall::from(call).transform())
                         }
                     }
                     _ => fcompiler_general_error(CompilerError::NoSuchFunction, call.ident),
@@ -296,20 +295,20 @@ pub fn process(input: ParserPairs, mut registers: Registers) -> (String, Registe
             }
             _ => {
                 if do_compile {
-                    lua_out.push_str(&(pair.as_str().to_string() + "\n"))
+                    src_out.push_str(&(pair.as_str().to_string() + "\n"))
                 }
             }
         }
     }
 
-    (lua_out, registers)
+    (src_out, registers)
 }
 
 macro_rules! publish_register {
-    ($registers:ident.$sub:ident >> $lua_out:ident) => {
+    ($registers:ident.$sub:ident >> $src_out:ident) => {
         let reg_name_for_label = stringify!($sub);
         let reg = &$registers.$sub;
-        $lua_out.push_str(&format!("    -- faraday.registers:{reg_name_for_label}\n"));
+        $src_out.push_str(&format!("    -- faraday.registers:{reg_name_for_label}\n"));
 
         for (ident, item) in reg {
             if (item.visibility != $crate::data::TypeVisibility::Public)
@@ -320,7 +319,7 @@ macro_rules! publish_register {
                 continue;
             }
 
-            $lua_out.push_str(&format!("    {} = {},\n", ident, ident));
+            $src_out.push_str(&format!("    {} = {},\n", ident, ident));
         }
     };
 }
@@ -364,7 +363,7 @@ pub fn process_file(
     define!("@@FARADAY_NO_COMPILE" = check_only >> registers);
 
     // ...
-    let mut lua_out: String = String::new();
+    let mut src_out: String = String::new();
 
     let file_string = match read_to_string(path) {
         Ok(f) => f,
@@ -377,7 +376,7 @@ pub fn process_file(
     };
 
     let compiled = process(parsed, registers);
-    lua_out.push_str(&compiled.0);
+    src_out.push_str(&compiled.0);
     registers = compiled.1;
 
     // build export list
@@ -388,8 +387,8 @@ pub fn process_file(
     publish_register!(registers.variables >> export);
 
     export.push_str("}");
-    lua_out.push_str(&export);
+    src_out.push_str(&export);
 
     // return
-    (lua_out, registers)
+    (src_out, registers)
 }

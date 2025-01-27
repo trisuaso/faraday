@@ -2,8 +2,7 @@ use crate::data::{Function, Type, TypeVisibility};
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
-pub const TYPE_NAME_EMPTY: &str = "empty";
-pub const TYPE_NAME_EMPTY_ALT: &str = "#";
+pub const TYPE_NAME_EMPTY: &str = "void";
 pub const TYPE_NAME_ANY: &str = "any";
 pub const TYPE_NAME_INT: &str = "int";
 pub const TYPE_NAME_FLOAT: &str = "float";
@@ -55,7 +54,6 @@ pub static TYPE_BINDINGS: LazyLock<BTreeMap<String, Type>> = LazyLock::new(|| {
     import_default_type!(TYPE_NAME_NUMBER >> map);
 
     import_default_type!(TYPE_NAME_EMPTY >> map);
-    import_default_type!(TYPE_NAME_EMPTY_ALT >> map);
     import_default_type!(TYPE_NAME_ANY >> map);
     import_default_type!(TYPE_NAME_REF >> map);
 

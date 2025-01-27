@@ -99,7 +99,7 @@ pub fn fcompiler_general_marker(rule: Rule, start: (usize, usize), end: (usize, 
 }
 
 // traits
-pub trait ToLua {
+pub trait ToSource {
     fn transform(&self) -> String;
 }
 
@@ -133,7 +133,28 @@ impl Default for Registers {
         Self {
             types: TYPE_BINDINGS.clone(),
             functions: FUNCTION_BINDINGS.clone(),
-            variables: BTreeMap::default(),
+            variables: {
+                let mut out = BTreeMap::default();
+
+                // defaults
+                out.insert(
+                    "self".to_string(),
+                    ("".to_string(), TYPE_NAME_TABLE.into()).into(),
+                );
+
+                out.insert(
+                    "@@FARADAY_PATH".to_string(),
+                    ("".to_string(), TYPE_NAME_STRING.into()).into(),
+                );
+
+                out.insert(
+                    "@@FARADAY_NO_COMPILE".to_string(),
+                    ("false".to_string(), TYPE_NAME_STRING.into()).into(),
+                );
+
+                // return
+                out
+            },
         }
     }
 }

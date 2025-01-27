@@ -14,6 +14,7 @@ value = _{
   | float
   | boolean
   | item
+  | struct_value
   | table
   | identifier
   | ordered_comparison
@@ -51,7 +52,7 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
 value_chunk = _{ value | block }
-chunk       = _{ macro | use | impl | function | type_alias | struct | enum | return | for_loop | while_loop | conditional | reassignment | pair | value | block }
+chunk       = _{ macro | use | struct | enum | impl | function | type_alias | return | for_loop | while_loop | conditional | reassignment | pair | value | block }
 
 use   = { type_modifier? ~ "use" ~ string ~ "as" ~ identifier }
 macro = { "#" ~ "[" ~ call ~ "]" }
@@ -74,9 +75,11 @@ impl_block      = { "{" ~ method* ~ "}" }
 method_modifier = { "static" | "assoc" }
 method          = { method_modifier? ~ sync_modifier? ~ "fn" ~ identifier ~ "(" ~ (typed_parameter ~ ","?)* ~ ")" ~ function_return ~ block }
 
-struct       = { type_modifier? ~ "struct" ~ type ~ struct_block }
-struct_type  = { type_modifier? ~ type ~ identifier ~ ";" }
-struct_block = { "{" ~ struct_type* ~ "}" }
+struct             = { type_modifier? ~ "struct" ~ type ~ struct_block }
+struct_type        = { type_modifier? ~ type ~ identifier ~ ";" }
+struct_block       = { "{" ~ struct_type* ~ "}" }
+struct_value       = { type ~ "{" ~ struct_value_block* ~ "}" }
+struct_value_block = { identifier ~ ":" ~ value ~ ";" }
 
 enum         = { type_modifier? ~ "enum" ~ identifier ~ enum_block }
 enum_variant = { pair ~ ";" }

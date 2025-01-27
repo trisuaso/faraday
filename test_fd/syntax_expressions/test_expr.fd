@@ -1,5 +1,5 @@
 // expression names should match the name of their file
-fn test_expr(String input) -> # {
+fn test_expr(String input) -> void {
     String output = "print(\"%s\")"
     return output:format(input)
 }
