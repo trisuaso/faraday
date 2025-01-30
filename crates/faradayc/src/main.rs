@@ -14,6 +14,12 @@ fn main() {
     let check_only = exec == "-r=check";
     let run = exec.starts_with("-r=");
 
+    if exec == "-r=rir" {
+        // run vm file instead
+        println!("{}", rir::process_file(PathBuf::new().join(input)));
+        return;
+    }
+
     // create build dir
     let out_path = PathBuf::current().extend(&["build", "main.lua"]);
     let parent = out_path.as_path().parent().unwrap();

@@ -4,6 +4,7 @@ version = "0.1.4"
 edition = "2024"
 
 [dependencies]
+rir = { path = "../rir" }
 compiler = { path = "../compiler" }
 parser = { path = "../parser" }
 pathbufd = "0.1.4"

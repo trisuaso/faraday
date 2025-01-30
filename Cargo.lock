@@ -69,6 +69,7 @@ dependencies = [
  "compiler",
  "parser",
  "pathbufd",
+ "rir",
  "serde",
  "serde_json",
 ]
@@ -237,6 +238,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
+]
+
+[[package]]
+name = "rir"
+version = "0.1.0"
+dependencies = [
+ "pathbufd",
+ "pest",
+ "pest_derive",
 ]
 
 [[package]]

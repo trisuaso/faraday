@@ -1,0 +1,12 @@
+[package]
+name = "rir"
+version = "0.1.0"
+edition = "2024"
+authors = ["trisuaso"]
+license = "MIT"
+repository = "https://github.com/trisuaso/faraday"
+
+[dependencies]
+pathbufd = "0.1.4"
+pest = "2.7.15"
+pest_derive = "2.7.15"
