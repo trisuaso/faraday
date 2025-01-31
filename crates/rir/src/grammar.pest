@@ -3,13 +3,14 @@ document = { SOI ~ (chunk)* ~ EOI }
 value = _{
     call
   | llvm_ir
+  | array_read
   | integer
   | string
   | read
   | identifier
 }
 
-identifier = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "%" | "*")+ }
+identifier = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "%" | "*" | "!")+ }
 
 string = @{ "\"" ~ inner ~ "\"" }
 inner  = @{ (!("\"" | "\\" | "\u{0000}" | "\u{001F}") ~ ANY)* ~ (escape ~ inner)? }
@@ -22,21 +23,27 @@ digits  = @{ (ASCII_DIGIT | ("_" ~ ASCII_DIGIT))+ }
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
-chunk = _{ function | no_alloca_pair | pair | pipe | return | value | section | block }
+chunk = _{ include | function | array_write | no_alloca_pair | pair | pipe | return | value | section | block }
 
 block    = { "{" ~ chunk* ~ "}" }
 section  = { "<" ~ identifier ~ ">" ~ block }
 param    = { type_annotation ~ identifier }
 function = { identifier ~ identifier ~ "(" ~ (param ~ ","*)* ~ ")" ~ block }
+return   = { "return" ~ call_param }
 
 COMMA      = { "," }
 call       = { identifier ~ "(" ~ (call_param ~ COMMA?)* ~ ")" }
 call_param = { value ~ ("@" ~ identifier)? }
 
 type_annotation = { identifier }
-pair            = { int? ~ type_annotation ~ identifier ~ "=" ~ value }
+pair            = { int? ~ pair_alignment? ~ type_annotation ~ identifier ~ "=" ~ value }
+pair_alignment  = { "<" ~ int ~ ">" }
+read            = { "*" ~ identifier }
 no_alloca_pair  = { identifier ~ ":=" ~ value }
 pipe            = { identifier ~ "<|" ~ value }
-llvm_ir         = { "ll" ~ string }
-return          = { "return" ~ value }
-read            = { "*" ~ identifier }
+
+array_read  = { identifier ~ "[" ~ int ~ "]" }
+array_write = { value ~ ">>" ~ array_read }
+
+llvm_ir = { "ll" ~ string }
+include = { "#include" ~ string }

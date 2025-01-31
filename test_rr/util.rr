@@ -1,0 +1,27 @@
+// io
+i32 print(i8* input) {
+    puts(input@ptr)
+    return 0@i32
+}
+
+i32 print!(i8* input) {
+    printf(input@ptr)
+    return 0@i32
+}
+
+i32 print_num(i32 num) {
+    5 string fmt = "%d\0A"
+    printf(fmt@ptr, num@i32)
+    return 0@i32
+}
+
+// string
+i8* stringcpy(ptr dest, ptr src) {
+    strcpy(dest@ptr, src@ptr)
+    return dest@ptr
+}
+
+i8* stringcat(ptr dest, ptr src) {
+    strcat(dest@ptr, src@ptr)
+    return dest@ptr
+}

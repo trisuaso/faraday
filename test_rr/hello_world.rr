@@ -1,6 +1,6 @@
 i32 printn(i8* data) {
     printf(data)
-    return ll"i32 0"
+    return 0@i32
 }
 
 i32 main() {
@@ -15,6 +15,6 @@ i32 main() {
     <print_number> {
         string prefix = "Number: %d"
         printf(prefix@ptr, 0@i32)
-        return ll"i32 0"
+        return 0@i32
     }
 }

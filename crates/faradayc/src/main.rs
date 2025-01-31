@@ -16,7 +16,10 @@ fn main() {
 
     if exec == "-r=rir" {
         // run vm file instead
-        println!("{}", rir::process_file(PathBuf::new().join(input)));
+        println!(
+            "{}",
+            rir::process_file_with_bindings(PathBuf::new().join(input)).1
+        );
         return;
     }
 

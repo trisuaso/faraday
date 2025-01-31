@@ -16,6 +16,15 @@ use std::{
 pub static COMPILER_MARKER: LazyLock<Mutex<(String, String)>> =
     LazyLock::new(|| Mutex::new((String::default(), String::default())));
 
+use rand::{Rng, distributions::Alphanumeric, thread_rng};
+pub fn random() -> String {
+    thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(16)
+        .map(char::from)
+        .collect()
+}
+
 pub fn process<'a>(
     input: ParserPairs<'a>,
     file_specifier: &'a str,
@@ -46,6 +55,22 @@ pub fn process<'a>(
 
         // ...
         match rule {
+            Rule::include => {
+                let path_string = pair.into_inner().next().unwrap().as_str();
+                let path: PathBuf = {
+                    let inner = path_string.replace("\"", "");
+                    PathBuf::new()
+                        .join(registers.get_var("@@PATH_PARENT").value)
+                        .join(inner)
+                };
+
+                let compiled = process_file(path);
+
+                let compiled_regs = compiled.0;
+                merge_registers!(compiled_regs + registers);
+
+                operations.push(Operation::Ir(compiled.1));
+            }
             Rule::section => {
                 let mut inner = pair.into_inner();
 
@@ -133,6 +158,25 @@ pub fn process<'a>(
                         let section_name = inner.next().unwrap().as_str();
                         operations.push(Operation::Jump(section_name.to_string()));
                     }
+                    // decay: create C array decay from variable
+                    // variable should be `alloca [100 * i8]`
+                    "decay" => {
+                        let ident = inner.next().unwrap().as_str();
+
+                        registers
+                            .variables
+                            .insert(format!("{ident}.decay"), Variable {
+                                prefix: String::new(),
+                                label: format!("{ident}.decay"),
+                                size: 100,
+                                align: 16,
+                                value: String::new(),
+                                r#type: "ptr".to_string(),
+                                key: random(),
+                            });
+
+                        operations.push(Operation::Ir(format!("%{ident}.decay = getelementptr inbounds [100 x i8], ptr %{ident}.addr, i64 0, i64 0")));
+                    }
                     // everything user-defined
                     _ => {
                         operations.push(fn_call(sub_function.to_string(), inner, &registers));
@@ -147,8 +191,10 @@ pub fn process<'a>(
                 let mut ident: String = String::new();
                 let mut r#type: String = String::new();
                 let mut size: usize = 0;
+                let mut align: i32 = 4;
                 let mut closed_size: bool = false;
                 let mut value: String = String::new();
+                let key: String = random();
 
                 while let Some(pair) = inner.next() {
                     let rule = pair.as_rule();
@@ -157,7 +203,7 @@ pub fn process<'a>(
                             let mut inner = pair.into_inner();
                             let sub_function = inner.next().unwrap().as_str();
 
-                            prefix = format!("%1 = __VALUE_INSTEAD\n");
+                            prefix = format!("%k_{key} = __VALUE_INSTEAD\n");
                             value = fn_call(sub_function.to_string(), inner, &registers)
                                 .transform(&mut registers)
                                 .1;
@@ -171,6 +217,10 @@ pub fn process<'a>(
                         Rule::type_annotation => {
                             let mut inner = pair.into_inner();
                             r#type = inner.next().unwrap().as_str().to_string();
+                        }
+                        Rule::pair_alignment => {
+                            let mut inner = pair.into_inner();
+                            align = inner.next().unwrap().as_str().parse::<i32>().unwrap();
                         }
                         Rule::identifier => {
                             if ident.is_empty() {
@@ -201,6 +251,20 @@ pub fn process<'a>(
                             size = pair.as_str().parse::<usize>().unwrap();
                             closed_size = true;
                         }
+                        Rule::array_read => {
+                            // C does array access by generating variables which
+                            // use getelementptr inbounds to access fields to read and write
+                            prefix = "_drop".to_string();
+
+                            let mut inner = pair.into_inner();
+                            let var_ident = inner.next().unwrap().as_str();
+                            let idx = inner.next().unwrap().as_str();
+                            let random = random();
+                            operations.push(Operation::Ir(format!(
+                                    "%arridx_{random} = getelementptr inbounds [{idx} x {type}], ptr %{var_ident}.addr, i64 0, i64 {idx}
+%{ident} = load {type}, ptr %arridx_{random}, align 8"
+                            )));
+                        }
                         _ => {
                             value = pair.as_str().to_string();
 
@@ -212,16 +276,24 @@ pub fn process<'a>(
                 }
 
                 registers.variables.insert(ident.clone(), Variable {
-                    prefix,
+                    prefix: if prefix == "_drop" {
+                        String::new()
+                    } else {
+                        prefix.clone()
+                    },
                     label: ident.clone(),
                     size,
+                    align,
                     value: value.clone(),
                     r#type: r#type.clone(),
+                    key,
                 });
 
-                operations.push(Operation::Assign(ident.clone()));
+                if prefix != "_drop" {
+                    operations.push(Operation::Assign(ident.clone()));
+                }
 
-                if (r#type != "string") & (value != "void") {
+                if (r#type != "string") & (value != "void") && (prefix != "_drop") {
                     operations.push(Operation::Pipe((ident, value)));
                 }
             }
@@ -256,8 +328,10 @@ pub fn process<'a>(
                     prefix: String::new(),
                     label: ident.clone(),
                     size: 0,
+                    align: 4,
                     value: value.clone(),
                     r#type: "faraday::no_alloca".to_string(),
+                    key: random(),
                 });
 
                 operations.push(Operation::Assign(ident.clone()));
@@ -280,6 +354,28 @@ pub fn process<'a>(
                 // push operation
                 operations.push(Operation::Pipe((ident.to_string(), v.value.clone())));
             }
+            Rule::array_write => {
+                let mut inner = pair.into_inner();
+
+                let value = inner.next().unwrap();
+                let value = match value.as_rule() {
+                    _ => value.as_str().to_string(),
+                };
+
+                // get variable
+                let mut write = inner.next().unwrap().into_inner();
+                let ident = write.next().unwrap().as_str().to_string();
+                let var = registers.get_var(&ident);
+                let r#type = var.r#type;
+
+                // push ir
+                let idx = write.next().unwrap().as_str();
+                let random = random();
+                operations.push(Operation::Ir(format!(
+                    "%arridx_{random} = getelementptr inbounds [{idx} x {type}], ptr %{ident}.addr, i64 0, i64 {idx}
+store {type} {value}, ptr %arridx_{random}, align 8"
+                )));
+            }
             Rule::read => {
                 let ident = pair.into_inner().next().unwrap().as_str();
                 operations.push(Operation::Read(ident.to_string()));
@@ -292,6 +388,20 @@ pub fn process<'a>(
                         Operation::Ir(data) => data,
                         _ => unreachable!(),
                     },
+                    Rule::call_param => {
+                        let mut inner = pair.into_inner();
+
+                        let value = inner.next().unwrap();
+                        let value = match value.as_rule() {
+                            Rule::identifier => {
+                                format!("%{}", value.as_str().to_string())
+                            }
+                            _ => value.as_str().to_string(),
+                        };
+
+                        let r#type = inner.next().unwrap().as_str();
+                        format!("{type} {value}")
+                    }
                     _ => pair.as_str().to_string(),
                 }
             }))),
@@ -347,6 +457,15 @@ fn fn_call<'a>(ident: String, mut inner: ParserPairs<'a>, regs: &Registers) -> O
                                 r#type = pair.as_str().to_string();
                             }
                         }
+                        Rule::llvm_ir => {
+                            value = match llvm_ir(pair.into_inner()) {
+                                Operation::Ir(data) => {
+                                    r#type = "void".to_string();
+                                    data
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
                         _ => value = pair.as_str().to_string(),
                     }
                 }
@@ -356,7 +475,11 @@ fn fn_call<'a>(ident: String, mut inner: ParserPairs<'a>, regs: &Registers) -> O
                     format!("{} {}", fun.args.get(arg_count).unwrap().0, value)
                 } else {
                     // type was provided
-                    format!("{type} {value}")
+                    if r#type != "void" {
+                        format!("{type} {value}")
+                    } else {
+                        value
+                    }
                 }
             }
             Rule::int => pair.as_str().to_string(),
@@ -379,8 +502,28 @@ fn fn_call<'a>(ident: String, mut inner: ParserPairs<'a>, regs: &Registers) -> O
     Operation::Call((ident, args_string))
 }
 
+macro_rules! define {
+    ($name:literal = ($value:expr) >> $registers:ident) => {
+        $registers.variables.insert($name.to_string(), Variable {
+            prefix: String::new(),
+            label: $name.to_string(),
+            r#type: "void".to_string(),
+            value: $value.to_string(),
+            size: 0,
+            align: 0,
+            key: random(),
+        });
+    };
+}
+
 // ...
-pub fn process_file<'a>(path: PathBuf) -> String {
+pub fn process_file(path: PathBuf) -> (Registers, String) {
+    let mut registers: Registers = Registers::default();
+
+    // define some compiler variables
+    define!("@@PATH_PARENT" = (path.as_path().parent().unwrap().to_str().unwrap()) >> registers);
+
+    // ...
     let file_string = match read_to_string(&path) {
         Ok(f) => f,
         Err(e) => icompiler_error!("{e}"),
@@ -394,11 +537,8 @@ pub fn process_file<'a>(path: PathBuf) -> String {
     let mut head: String = String::new();
     let mut body: String = String::new();
 
-    let mut operations = process(
-        parsed,
-        path.as_path().to_str().unwrap(),
-        Registers::default(),
-    );
+    let file_specifier = path.as_path().to_str().unwrap();
+    let mut operations = process(parsed, file_specifier, registers);
 
     for operation in operations.1 {
         let (head_, body_) = operation.transform(&mut operations.0);
@@ -406,11 +546,28 @@ pub fn process_file<'a>(path: PathBuf) -> String {
         body.push_str(&format!("{body_}\n"));
     }
 
-    format!(
-        "; faraday rir
+    (
+        operations.0,
+        format!(
+            "; begin: {file_specifier}\n{}\n{body}; end: {file_specifier}",
+            head.trim()
+        ),
+    )
+}
+
+pub fn process_file_with_bindings(path: PathBuf) -> (Registers, String) {
+    let out = process_file(path);
+    (
+        out.0,
+        format!(
+            "; faraday rir
 declare i32 @puts(i8* nocapture) nounwind
 declare i32 @printf(i8* nocapture) nounwind
-{}\n{body}",
-        head.trim()
+
+declare i32 @strcat(i8* nocapture, i8* nocapture) nounwind
+declare i32 @strcpy(i8* nocapture, i8* nocapture) nounwind
+{}",
+            out.1
+        ),
     )
 }

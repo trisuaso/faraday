@@ -35,8 +35,12 @@ impl Default for Registers {
             sections: HashMap::new(),
             functions: {
                 let mut out = HashMap::new();
+
                 llvm_function!(declare i32 @puts(("i8*".to_string(), String::new())) >> out);
                 llvm_function!(declare i32 @printf(("i8*".to_string(), String::new())) >> out);
+                llvm_function!(declare i32 @strcat(("i8*".to_string(), String::new()), ("i8*".to_string(), String::new())) >> out);
+                llvm_function!(declare i32 @strcpy(("i8*".to_string(), String::new()), ("i8*".to_string(), String::new())) >> out);
+
                 out
             },
         }
@@ -182,8 +186,8 @@ impl ToIr for Operation {
                 (
                     String::new(),
                     format!(
-                        "%{ident}.addr = alloca [{} x {}], align 4",
-                        var.size, var.r#type
+                        "%{ident}.addr = alloca [{} x {}], align {}",
+                        var.size, var.r#type, var.align
                     ),
                 )
             }
@@ -212,8 +216,9 @@ impl ToIr for Operation {
                     if !var.prefix.is_empty() {
                         // call
                         format!(
-                            "{}store {} %1, ptr %{ident}.addr, align 4",
-                            var.prefix, var.r#type
+                            "{}store {} %k_{}, ptr %{ident}.addr, align 4
+store ptr %{ident}, ptr %k_{}, align 4",
+                            var.prefix, var.r#type, var.key, var.key
                         )
                         .replace("__VALUE_INSTEAD", &val)
                     } else {
@@ -324,8 +329,11 @@ pub struct Variable {
     pub prefix: String,
     pub label: String,
     pub size: usize,
+    pub align: i32,
     pub value: String,
     pub r#type: String,
+    /// Random key associated with the variable.
+    pub key: String,
 }
 
 impl From<&str> for Variable {
@@ -334,8 +342,10 @@ impl From<&str> for Variable {
             prefix: String::new(),
             label: value.to_string(),
             size: 0,
+            align: 4,
             value: value.to_string(),
             r#type: "void".to_string(),
+            key: String::new(),
         }
     }
 }

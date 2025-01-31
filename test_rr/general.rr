@@ -28,6 +28,6 @@ i32 main() {
         string c_int_print = "%d"
         printf(c_int_print@ptr, result@i32)
 
-        return ll"i32 0"
+        return 0@i32
     }
 }

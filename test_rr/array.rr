@@ -1,0 +1,16 @@
+#include "util.rr"
+
+i32 main() {
+    5<16> i32 a = void
+
+    5 >> a[0]
+    i32 b = a[0]
+    print_num(b)
+
+    10 >> a[0]
+
+    i32 c = a[0]
+    print_num(c)
+
+    return 0@i32
+}
