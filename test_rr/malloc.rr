@@ -8,5 +8,5 @@ i32 main() {
     free(pointer_to_mem)
     printn("memory freed"<14>)
 
-    return 0@i32
+    return 0
 }

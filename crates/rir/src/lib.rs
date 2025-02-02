@@ -1,7 +1,9 @@
 pub mod data;
+pub mod ir;
 pub mod macros;
 pub mod parser;
 
+use ir::{Value, fn_call, fn_return, llvm_ir, rule_to_operator, var_assign, var_assign_no_alloca};
 use macros::icompiler_error;
 use parser::{InstructionParser, Pairs, Parser, Rule};
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
@@ -26,12 +28,12 @@ pub fn random() -> String {
 }
 
 pub fn process<'a>(
-    input: ParserPairs<'a>,
+    mut input: ParserPairs<'a>,
     file_specifier: &'a str,
     mut registers: Registers,
 ) -> (Registers, Vec<Operation>) {
     let mut operations = Vec::new();
-    for pair in input {
+    while let Some(pair) = input.next() {
         let rule = pair.as_rule();
 
         // marker
@@ -263,6 +265,24 @@ pub fn process<'a>(
                             .variables
                             .insert(name.clone(), name.as_str().into());
                     }
+                    // peak: read the value of a variable into a temporary variable
+                    "peak" => {
+                        let var_ident = inner.next().unwrap().as_str();
+
+                        inner.next(); // skip
+                        let bind_as_name = inner.next().unwrap().as_str();
+
+                        let var = registers.get_var(var_ident);
+
+                        operations.push(Operation::Ir(format!(
+                            "%{bind_as_name} = load {}, ptr %{}.addr, align 4",
+                            var.r#type, var.label
+                        )));
+
+                        registers
+                            .variables
+                            .insert(bind_as_name.to_string(), bind_as_name.into());
+                    }
                     // everything user-defined
                     _ => {
                         let fun = registers.get_function(sub_function).clone();
@@ -276,148 +296,15 @@ pub fn process<'a>(
                 }
             }
             Rule::pair => {
-                // alloc variable
-                let mut inner = pair.into_inner();
-
-                let mut prefix: String = String::new();
-                let mut ident: String = String::new();
-                let mut r#type: String = String::new();
-                let mut size: usize = 0;
-                let mut align: i32 = 4;
-                let mut closed_size: bool = false;
-                let mut value: String = String::new();
-                let key: String = random();
-
-                while let Some(pair) = inner.next() {
-                    let rule = pair.as_rule();
-                    match rule {
-                        Rule::call => {
-                            let mut inner = pair.into_inner();
-                            let sub_function = inner.next().unwrap().as_str();
-
-                            prefix = format!("%k_{key} = __VALUE_INSTEAD\n");
-                            let fun = registers.get_function(sub_function).clone();
-                            value = fn_call(sub_function.to_string(), inner, &mut registers, &fun)
-                                .transform(&mut registers)
-                                .1;
-
-                            if !closed_size {
-                                size = value.len();
-                            }
-
-                            break;
-                        }
-                        Rule::type_annotation => {
-                            let mut inner = pair.into_inner();
-                            r#type = inner.next().unwrap().as_str().to_string();
-                        }
-                        Rule::pair_alignment => {
-                            let mut inner = pair.into_inner();
-                            align = inner.next().unwrap().as_str().parse::<i32>().unwrap();
-                        }
-                        Rule::identifier => {
-                            if ident.is_empty() {
-                                ident = pair.as_str().to_string()
-                            } else if pair.as_str() != "void" {
-                                let var = registers.get_var(pair.as_str());
-
-                                value = format!("%{}", var.label);
-
-                                if !closed_size {
-                                    size = value.len();
-                                }
-                            } else {
-                                value = pair.as_str().to_string()
-                            }
-                        }
-                        Rule::llvm_ir => match llvm_ir(pair.into_inner()) {
-                            Operation::Ir(data) => {
-                                value = data;
-
-                                if !closed_size {
-                                    size = value.len();
-                                }
-                            }
-                            _ => unreachable!(),
-                        },
-                        Rule::int => {
-                            size = pair.as_str().parse::<usize>().unwrap();
-                            closed_size = true;
-                        }
-                        _ => {
-                            value = pair.as_str().to_string();
-
-                            if !closed_size {
-                                size = std::mem::size_of_val(value.as_bytes());
-                            }
-                        }
-                    }
-                }
-
-                registers.variables.insert(ident.clone(), Variable {
-                    prefix: if prefix == "_drop" {
-                        String::new()
-                    } else {
-                        prefix.clone()
-                    },
-                    label: ident.clone(),
-                    size,
-                    align,
-                    value: value.clone(),
-                    r#type: r#type.clone(),
-                    key,
-                });
-
-                if prefix != "_drop" {
-                    operations.push(Operation::Assign(ident.clone()));
-                }
-
-                if (r#type != "string") & (value != "void") && (prefix != "_drop") {
-                    operations.push(Operation::Pipe((ident, value)));
-                }
+                var_assign(
+                    String::new(),
+                    pair.into_inner(),
+                    &mut operations,
+                    &mut registers,
+                );
             }
             Rule::no_alloca_pair => {
-                // alloc variable
-                let mut inner = pair.into_inner();
-
-                let mut ident: String = String::new();
-                let mut value: String = String::new();
-
-                while let Some(pair) = inner.next() {
-                    let rule = pair.as_rule();
-                    match rule {
-                        Rule::identifier => {
-                            if ident.is_empty() {
-                                ident = pair.as_str().to_string()
-                            } else {
-                                value = pair.as_str().to_string()
-                            }
-                        }
-                        Rule::llvm_ir => match llvm_ir(pair.into_inner()) {
-                            Operation::Ir(data) => {
-                                value = data;
-                            }
-                            _ => unreachable!(),
-                        },
-                        _ => value = pair.as_str().to_string(),
-                    }
-                }
-
-                registers.variables.insert(ident.clone(), Variable {
-                    prefix: String::new(),
-                    label: ident.clone(),
-                    size: 0,
-                    align: 4,
-                    value: value.clone(),
-                    r#type: "faraday::no_alloca".to_string(),
-                    key: random(),
-                });
-
-                registers
-                    .variables
-                    .insert(format!("{ident}.addr"), ident.as_str().into());
-
-                operations.push(Operation::Assign(ident.clone()));
+                var_assign_no_alloca(pair.into_inner(), &mut operations, &mut registers)
             }
             Rule::pipe => {
                 let mut inner = pair.into_inner();
@@ -426,37 +313,104 @@ pub fn process<'a>(
                 let value = inner.next().unwrap().as_str().to_string();
 
                 // push operation
-                operations.push(Operation::Pipe((ident.to_string(), value.to_string())));
+                operations.push(Operation::Pipe((
+                    ident.to_string(),
+                    ident.to_string(),
+                    value.to_string(),
+                )));
             }
             Rule::read => {
                 let ident = pair.into_inner().next().unwrap().as_str();
                 operations.push(Operation::Read(ident.to_string()));
             }
             Rule::llvm_ir => operations.push(llvm_ir(pair.into_inner())),
-            Rule::r#return => operations.push(Operation::Ir(format!("ret {}", {
-                let pair = pair.into_inner().next().unwrap();
-                match pair.as_rule() {
-                    Rule::llvm_ir => match llvm_ir(pair.into_inner()) {
-                        Operation::Ir(data) => data,
-                        _ => unreachable!(),
-                    },
-                    Rule::call_param => {
-                        let mut inner = pair.into_inner();
+            Rule::r#return => operations.push(Operation::Ir(format!("ret {}", fn_return(pair)))),
+            Rule::for_loop => {
+                // we're going to implement this basically the same way Clang does,
+                // we'll assign a variable with a default value, jump to a conditional
+                // block, and then jump to either a body or ending block. If we jumped
+                // to the body block, we need to jump to the increase block at the end to
+                // progress the iteration. The ending block contains everything
+                // that comes AFTER the loop.
+                let mut loop_inner = pair.into_inner();
+                // block names
+                let key = random();
+                let block_cond = format!("bb_cond_{key}");
+                let block_body = format!("bb_body_{key}");
+                let block_inc = format!("bb_inc_{key}");
+                let block_end = format!("bb_end_{key}");
 
-                        let value = inner.next().unwrap();
-                        let value = match value.as_rule() {
-                            Rule::identifier => {
-                                format!("%{}", value.as_str().to_string())
-                            }
-                            _ => value.as_str().to_string(),
-                        };
+                // head
+                let pair = loop_inner.next().unwrap();
+                let mut scoped_regs = registers.clone(); // create new scope
 
-                        let r#type = inner.next().unwrap().as_str();
-                        format!("{type} {value}")
-                    }
-                    _ => pair.as_str().to_string(),
+                let var_name = format!("k_{key}");
+                let var_label = var_assign(
+                    var_name.clone(),
+                    pair.into_inner(),
+                    &mut operations,
+                    &mut scoped_regs,
+                );
+                let var = scoped_regs.get_var(&var_label);
+                operations.push(Operation::Ir(format!("br label %{block_cond}")));
+
+                // cond
+                let cond_key = random();
+
+                let mut comparison = loop_inner.next().unwrap().into_inner();
+                comparison.next(); // skip since this is just var_name
+
+                let op = rule_to_operator(comparison.next().unwrap().as_rule());
+                let value = Value::get(comparison.next().unwrap(), &cond_key, &mut scoped_regs).0;
+                let prefix = value.1;
+                let value = value.0;
+
+                operations.push(Operation::Ir(format!(
+                    "{block_cond}:
+%{var_name}_{cond_key} = load {}, ptr %{var_name}.addr, align 4
+{prefix}
+%{var_name}_cmp_{cond_key} = icmp {op} {} %{var_name}_{cond_key}, {value}
+br i1 %{var_name}_cmp_{cond_key}, label %{block_body}, label %{block_end}",
+                    var.r#type, var.r#type
+                )));
+
+                // body
+                let block = loop_inner.next().unwrap().into_inner();
+                operations.push(Operation::Ir(format!("{block_body}:")));
+                let res = process(block, file_specifier, scoped_regs);
+
+                for operation in res.1 {
+                    operations.push(operation);
                 }
-            }))),
+
+                let scoped_regs = res.0; // use updated version of scoped_regs
+                registers
+                    .extra_header_ir
+                    .push_str(&scoped_regs.extra_header_ir); // make sure header stuff is still global
+
+                operations.push(Operation::Ir(format!("br label %{block_inc}")));
+
+                // inc(rease)
+                let inc_key = random();
+                operations.push(Operation::Ir(format!(
+                    "{block_inc}:
+%{var_name}_{inc_key} = load {}, ptr %{var_name}.addr, align 4
+%{var_name}_inc_{inc_key} = add nsw i32 %{var_name}_{inc_key}, 1
+store i32 %{var_name}_inc_{inc_key}, ptr %{var_name}.addr, align 4
+br label %{block_cond}",
+                    var.r#type
+                )));
+
+                // end
+                operations.push(Operation::Ir(format!("{block_end}:")));
+                let res = process(input, file_specifier, scoped_regs); // capture everything left in `input`
+
+                for operation in res.1 {
+                    operations.push(operation);
+                }
+
+                return (res.0, operations);
+            }
             Rule::EOI => break,
             _ => icompiler_error!("reached unexpected token: {rule:?}"),
         }
@@ -467,110 +421,6 @@ pub fn process<'a>(
     }
 
     (registers, operations)
-}
-
-// short operation generators
-fn llvm_ir<'a>(mut input: ParserPairs<'a>) -> Operation {
-    let mut raw = input.next().unwrap().as_str().to_string();
-
-    raw.remove(0);
-    raw.remove(raw.len() - 1);
-
-    Operation::Ir(raw)
-}
-
-fn fn_call<'a>(
-    ident: String,
-    mut inner: ParserPairs<'a>,
-    regs: &mut Registers,
-    fun: &Function,
-) -> Operation {
-    let mut args_string = String::new();
-
-    let mut arg_count = 0;
-    while let Some(pair) = inner.next() {
-        args_string.push_str(&match pair.as_rule() {
-            Rule::COMMA => ",".to_string(),
-            Rule::call_param => {
-                let mut inner = pair.into_inner();
-                let mut value: String = String::new();
-                let mut r#type: String = String::new();
-
-                while let Some(pair) = inner.next() {
-                    match pair.as_rule() {
-                        Rule::identifier => {
-                            if value.is_empty() {
-                                // fill value first
-                                // get var and make sure it isn't a string
-                                let var = regs.get_var(pair.as_str());
-
-                                if var.r#type == "string" {
-                                    // return pointer to string
-                                    value = format!("@.s_{}_{}", var.label, var.key);
-                                    r#type = "ptr".to_string();
-                                } else {
-                                    // normal variable
-                                    value = format!("%{}", var.label)
-                                }
-                            } else {
-                                // fill type
-                                r#type = pair.as_str().to_string();
-                            }
-                        }
-                        Rule::llvm_ir => {
-                            value = match llvm_ir(pair.into_inner()) {
-                                Operation::Ir(data) => {
-                                    r#type = "void".to_string();
-                                    data
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                        Rule::sized_string => {
-                            // icompiler_error!("cannot process string in call arguments, please use pointer")
-
-                            let mut inner = pair.into_inner();
-
-                            let content = inner.next().unwrap().as_str();
-                            let size = inner.next().unwrap().into_inner().next().unwrap().as_str();
-
-                            let name = random();
-                            regs.extra_header_ir.push_str(&format!(
-                                "@.s_{name} = constant [{size} x i8] c\"{content}\\00\\00\", align 1\n",
-                            ));
-                            value = format!("@.s_{name}");
-                        }
-                        _ => value = pair.as_str().to_string(),
-                    }
-                }
-
-                if r#type.is_empty() {
-                    // pull from function
-                    format!("{} {}", fun.args.get(arg_count).unwrap().0, value)
-                } else {
-                    // type was provided
-                    if r#type != "void" {
-                        format!("{type} {value}")
-                    } else {
-                        value
-                    }
-                }
-            }
-            Rule::int => pair.as_str().to_string(),
-            Rule::llvm_ir => match llvm_ir(pair.into_inner()) {
-                Operation::Ir(data) => data,
-                _ => unreachable!(),
-            },
-            _ => icompiler_error!(
-                "received unexpected rule in function arguments: {:?}",
-                pair.as_rule()
-            ),
-        });
-
-        arg_count += 1;
-    }
-
-    Operation::Call((ident, args_string))
 }
 
 macro_rules! define {

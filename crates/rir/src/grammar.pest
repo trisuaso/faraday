@@ -8,6 +8,7 @@ value = _{
   | string
   | read
   | identifier
+  | ordered_comparison
 }
 
 identifier = @{ (ASCII_ALPHANUMERIC | "_" | "-" | ":" | "." | "%" | "*" | "!")+ }
@@ -24,7 +25,7 @@ digits  = @{ (ASCII_DIGIT | ("_" ~ ASCII_DIGIT))+ }
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
-chunk = _{ include | function | no_alloca_pair | pair | pipe | return | value | section | block }
+chunk = _{ include | function | no_alloca_pair | pair | pipe | return | for_loop | while_loop | conditional | value | section | block }
 
 block    = { "{" ~ chunk* ~ "}" }
 section  = { "<" ~ identifier ~ ">" ~ block }
@@ -45,3 +46,20 @@ pipe            = { identifier ~ "<|" ~ value }
 
 llvm_ir = { "ll" ~ string }
 include = { "#include" ~ string }
+
+ordered_comparison    = { "(" ~ comparison ~ ")" }
+GREATER_THAN          = { ">" }
+LESS_THAN             = { "<" }
+GREATER_THAN_EQUAL_TO = { ">=" }
+LESS_THAN_EQUAL_TO    = { "<=" }
+NOT_EQUAL             = { "!=" }
+EQUAL                 = { "==" }
+AND                   = { "&&" }
+OR                    = { "||" }
+comparison            = { value ~ (GREATER_THAN | LESS_THAN | GREATER_THAN_EQUAL_TO | LESS_THAN_EQUAL_TO | NOT_EQUAL | EQUAL | AND | OR) ~ value }
+
+for_loop           = { "for" ~ "(" ~ pair ~ ";" ~ comparison ~ ")" ~ block }
+while_loop         = { "while" ~ "(" ~ value ~ ")" ~ block }
+conditional        = { "if" ~ "(" ~ value ~ ")" ~ block ~ (conditional_elseif | conditional_else)* }
+conditional_else   = { "else" ~ block }
+conditional_elseif = { "else if" ~ "(" ~ value ~ ")" ~ block }

@@ -58,6 +58,12 @@ impl Registers {
         if let Some(v) = self.variables.get(key) {
             v.to_owned()
         } else {
+            let backtrace = std::backtrace::Backtrace::capture();
+
+            if backtrace.status() == std::backtrace::BacktraceStatus::Captured {
+                println!("{backtrace}");
+            }
+
             icompiler_error!("attempted to get invalid variable: {key}")
         }
     }
@@ -152,7 +158,7 @@ pub enum Operation {
     /// * `ident`
     Jump(String),
     /// Pipe data to variable.
-    Pipe((String, String)),
+    Pipe((String, String, String)),
     /// Call a function.
     Call((String, String)),
     /// Raw LLVM IR.
@@ -172,7 +178,8 @@ impl ToIr for Operation {
                 if var.r#type == "string" {
                     return (
                         format!(
-                            "@.s_{ident}_{} = constant [{} x i8] c\"{}\\00\\00\", align 1",
+                            "@.s_{}_{} = constant [{} x i8] c\"{}\\00\\00\", align 1",
+                            var.label,
                             var.key,
                             var.size,
                             {
@@ -183,20 +190,20 @@ impl ToIr for Operation {
                             }
                         ),
                         format!(
-                            "%{ident}.addr = getelementptr [{} x i8],[{} x i8]* @.s_{ident}_{}, i64 0, i64 0",
-                            var.size, var.size, var.key,
+                            "%{}.addr = getelementptr [{} x i8],[{} x i8]* @.s_{ident}_{}, i64 0, i64 0",
+                            var.label, var.size, var.size, var.key,
                         ),
                     );
                 } else if var.r#type == "faraday::no_alloca" {
-                    return (String::new(), format!("%{ident} = {}", var.value));
+                    return (String::new(), format!("%{} = {}", var.label, var.value));
                 }
 
                 // read: %{ident} = load {type}, ptr %p_ident, align 4
                 (
                     String::new(),
                     format!(
-                        "%{ident}.addr = alloca [{} x {}], align {}",
-                        var.size, var.r#type, var.align
+                        "%{}.addr = alloca [{} x {}], align {}",
+                        var.label, var.size, var.r#type, var.align
                     ),
                 )
             }
@@ -207,8 +214,8 @@ impl ToIr for Operation {
                 .get_function(&ident)
                 .transform(&mut clone_registers!(registers; Registers)),
             Jump(ident) => (String::new(), format!("br label %{ident}")),
-            Pipe((ident, value)) => {
-                let var = registers.get_var_mut(ident);
+            Pipe((label, ident, value)) => {
+                let var = registers.get_var_mut(label);
                 var.value = value.to_owned();
 
                 let mut val: String = String::new();
@@ -253,7 +260,10 @@ impl ToIr for Operation {
 
                 (
                     String::new(),
-                    format!("%{ident} = load {}, ptr %{ident}.addr, align 4", var.r#type),
+                    format!(
+                        "%{} = load {}, ptr %{}.addr, align 4",
+                        var.label, var.r#type, var.label
+                    ),
                 )
             }
         }
