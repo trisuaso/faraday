@@ -1,6 +1,6 @@
 i32 square(i32 num) {
     res := ll"mul nsw i32 %num, %num"
-    return ll"i32 %res"
+    return res@i32
 }
 
 i32 main() {

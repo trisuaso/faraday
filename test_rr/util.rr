@@ -4,14 +4,20 @@ i32 print(i8* input) {
     return 0@i32
 }
 
+i32 printn(i8* input) {
+    5 string fmt_n = "%s\0A"
+    printf(fmt_n@ptr, input@ptr)
+    return 0@i32
+}
+
 i32 print!(i8* input) {
     printf(input@ptr)
     return 0@i32
 }
 
 i32 print_num(i32 num) {
-    5 string fmt = "%d\0A"
-    printf(fmt@ptr, num@i32)
+    5 string fmt_num = "%d\0A"
+    printf(fmt_num@ptr, num@i32)
     return 0@i32
 }
 

@@ -3,14 +3,10 @@
 i32 main() {
     5<16> i32 a = void
 
-    5 >> a[0]
-    i32 b = a[0]
-    print_num(b)
+    awrite(a, 5, 0)
+    aread(a, 0)
+    awrite(a, 4, 0)
 
-    10 >> a[0]
-
-    i32 c = a[0]
-    print_num(c)
-
+    print_num(a.0)
     return 0@i32
 }

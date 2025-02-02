@@ -177,9 +177,101 @@ pub fn process<'a>(
 
                         operations.push(Operation::Ir(format!("%{ident}.decay = getelementptr inbounds [100 x i8], ptr %{ident}.addr, i64 0, i64 0")));
                     }
+                    // awrite: write to an array variable
+                    //
+                    // # Example
+                    // ```text
+                    // awrite(ident, value, idx...)
+                    // ```
+                    "awrite" => {
+                        // get variable
+                        let ident = inner.next().unwrap().as_str().to_string();
+
+                        let var = registers.get_var(&ident);
+                        let r#type = var.r#type;
+
+                        // get value
+                        inner.next();
+                        let value = inner.next().unwrap();
+                        let value = match value.as_rule() {
+                            _ => value.as_str().to_string(),
+                        };
+
+                        // build index pointers
+                        let mut index_access_ir = String::new();
+
+                        let mut indexes_suffix_string: String = String::new();
+                        let mut last_index_variable: String = String::new();
+
+                        while let Some(pair) = inner.next() {
+                            if pair.as_rule() != Rule::call_param {
+                                continue;
+                            }
+
+                            let idx = pair.as_str();
+                            indexes_suffix_string.push_str(&format!(".{idx}")); // this keeps the variable naming predictable
+                            last_index_variable = random();
+
+                            index_access_ir.push_str(&format!("%arridx_{last_index_variable} = getelementptr inbounds [{idx} x {type}], ptr %{}.addr, i64 0, i64 {idx}", var.label));
+                        }
+
+                        // ...
+                        operations.push(Operation::Ir(format!(
+                            "{index_access_ir}\nstore {type} {value}, ptr %arridx_{last_index_variable}, align 8"
+                        )));
+                    }
+                    // aread: read from an array
+                    //
+                    // # Example
+                    // ```test
+                    // aread(ident, idx...)
+                    // ```
+                    //
+                    // # Returns
+                    // Defines `ident.index.index...` variable.
+                    "aread" => {
+                        // C does array access by generating variables which
+                        // use getelementptr inbounds to access fields to read and write
+                        let var_ident = inner.next().unwrap().as_str();
+                        let var = registers.get_var(var_ident);
+
+                        // build index pointers
+                        let mut index_access_ir = String::new();
+
+                        let mut indexes_suffix_string: String = String::new();
+                        let mut last_index_variable: String = String::new();
+
+                        while let Some(pair) = inner.next() {
+                            if pair.as_rule() != Rule::call_param {
+                                continue;
+                            }
+
+                            let idx = pair.as_str();
+                            indexes_suffix_string.push_str(&format!(".{idx}")); // this keeps the variable naming predictable
+                            last_index_variable = random();
+
+                            index_access_ir.push_str(&format!("%arridx_{last_index_variable} = getelementptr inbounds [{idx} x {}], ptr %{var_ident}.addr, i64 0, i64 {idx}", var.r#type));
+                        }
+
+                        // ...
+                        let name = format!("{}{indexes_suffix_string}", var.label);
+                        operations.push(Operation::Ir(format!(
+                            "{index_access_ir}\n%{name} = load {}, ptr %arridx_{last_index_variable}, align 8",
+                             var.r#type
+                        )));
+                        registers
+                            .variables
+                            .insert(name.clone(), name.as_str().into());
+                    }
                     // everything user-defined
                     _ => {
-                        operations.push(fn_call(sub_function.to_string(), inner, &registers));
+                        let fun = registers.get_function(sub_function).clone();
+                        operations.push(fn_call(
+                            sub_function.to_string(),
+                            inner,
+                            &mut registers,
+                            &fun,
+                        ));
                     }
                 }
             }
@@ -204,7 +296,8 @@ pub fn process<'a>(
                             let sub_function = inner.next().unwrap().as_str();
 
                             prefix = format!("%k_{key} = __VALUE_INSTEAD\n");
-                            value = fn_call(sub_function.to_string(), inner, &registers)
+                            let fun = registers.get_function(sub_function).clone();
+                            value = fn_call(sub_function.to_string(), inner, &mut registers, &fun)
                                 .transform(&mut registers)
                                 .1;
 
@@ -251,25 +344,11 @@ pub fn process<'a>(
                             size = pair.as_str().parse::<usize>().unwrap();
                             closed_size = true;
                         }
-                        Rule::array_read => {
-                            // C does array access by generating variables which
-                            // use getelementptr inbounds to access fields to read and write
-                            prefix = "_drop".to_string();
-
-                            let mut inner = pair.into_inner();
-                            let var_ident = inner.next().unwrap().as_str();
-                            let idx = inner.next().unwrap().as_str();
-                            let random = random();
-                            operations.push(Operation::Ir(format!(
-                                    "%arridx_{random} = getelementptr inbounds [{idx} x {type}], ptr %{var_ident}.addr, i64 0, i64 {idx}
-%{ident} = load {type}, ptr %arridx_{random}, align 8"
-                            )));
-                        }
                         _ => {
                             value = pair.as_str().to_string();
 
                             if !closed_size {
-                                size = value.len();
+                                size = std::mem::size_of_val(value.as_bytes());
                             }
                         }
                     }
@@ -334,47 +413,20 @@ pub fn process<'a>(
                     key: random(),
                 });
 
+                registers
+                    .variables
+                    .insert(format!("{ident}.addr"), ident.as_str().into());
+
                 operations.push(Operation::Assign(ident.clone()));
             }
             Rule::pipe => {
                 let mut inner = pair.into_inner();
 
                 let ident = inner.next().unwrap().as_str().to_string();
-                let value = inner.next().unwrap();
-
-                // get variable
-                let v = registers.get_var_mut(ident.as_str());
-
-                // update variable
-                v.value = String::with_capacity(v.size);
-                for char in value.as_str().to_string().chars() {
-                    v.value.push(char);
-                }
+                let value = inner.next().unwrap().as_str().to_string();
 
                 // push operation
-                operations.push(Operation::Pipe((ident.to_string(), v.value.clone())));
-            }
-            Rule::array_write => {
-                let mut inner = pair.into_inner();
-
-                let value = inner.next().unwrap();
-                let value = match value.as_rule() {
-                    _ => value.as_str().to_string(),
-                };
-
-                // get variable
-                let mut write = inner.next().unwrap().into_inner();
-                let ident = write.next().unwrap().as_str().to_string();
-                let var = registers.get_var(&ident);
-                let r#type = var.r#type;
-
-                // push ir
-                let idx = write.next().unwrap().as_str();
-                let random = random();
-                operations.push(Operation::Ir(format!(
-                    "%arridx_{random} = getelementptr inbounds [{idx} x {type}], ptr %{ident}.addr, i64 0, i64 {idx}
-store {type} {value}, ptr %arridx_{random}, align 8"
-                )));
+                operations.push(Operation::Pipe((ident.to_string(), value.to_string())));
             }
             Rule::read => {
                 let ident = pair.into_inner().next().unwrap().as_str();
@@ -410,6 +462,10 @@ store {type} {value}, ptr %arridx_{random}, align 8"
         }
     }
 
+    if !registers.extra_header_ir.is_empty() {
+        operations.push(Operation::HeadIr(registers.extra_header_ir.clone()));
+    }
+
     (registers, operations)
 }
 
@@ -423,8 +479,12 @@ fn llvm_ir<'a>(mut input: ParserPairs<'a>) -> Operation {
     Operation::Ir(raw)
 }
 
-fn fn_call<'a>(ident: String, mut inner: ParserPairs<'a>, regs: &Registers) -> Operation {
-    let fun = regs.get_function(&ident);
+fn fn_call<'a>(
+    ident: String,
+    mut inner: ParserPairs<'a>,
+    regs: &mut Registers,
+    fun: &Function,
+) -> Operation {
     let mut args_string = String::new();
 
     let mut arg_count = 0;
@@ -446,7 +506,7 @@ fn fn_call<'a>(ident: String, mut inner: ParserPairs<'a>, regs: &Registers) -> O
 
                                 if var.r#type == "string" {
                                     // return pointer to string
-                                    value = format!("@.s_{}", var.label);
+                                    value = format!("@.s_{}_{}", var.label, var.key);
                                     r#type = "ptr".to_string();
                                 } else {
                                     // normal variable
@@ -466,6 +526,20 @@ fn fn_call<'a>(ident: String, mut inner: ParserPairs<'a>, regs: &Registers) -> O
                                 _ => unreachable!(),
                             }
                         }
+                        Rule::sized_string => {
+                            // icompiler_error!("cannot process string in call arguments, please use pointer")
+
+                            let mut inner = pair.into_inner();
+
+                            let content = inner.next().unwrap().as_str();
+                            let size = inner.next().unwrap().into_inner().next().unwrap().as_str();
+
+                            let name = random();
+                            regs.extra_header_ir.push_str(&format!(
+                                "@.s_{name} = constant [{size} x i8] c\"{content}\\00\\00\", align 1\n",
+                            ));
+                            value = format!("@.s_{name}");
+                        }
                         _ => value = pair.as_str().to_string(),
                     }
                 }
@@ -483,9 +557,6 @@ fn fn_call<'a>(ident: String, mut inner: ParserPairs<'a>, regs: &Registers) -> O
                 }
             }
             Rule::int => pair.as_str().to_string(),
-            Rule::string => {
-                icompiler_error!("cannot process string in call arguments, please use pointer")
-            }
             Rule::llvm_ir => match llvm_ir(pair.into_inner()) {
                 Operation::Ir(data) => data,
                 _ => unreachable!(),
@@ -566,6 +637,9 @@ declare i32 @printf(i8* nocapture) nounwind
 
 declare i32 @strcat(i8* nocapture, i8* nocapture) nounwind
 declare i32 @strcpy(i8* nocapture, i8* nocapture) nounwind
+
+declare ptr @malloc(i32) nounwind
+declare void @free(i8* nocapture) nounwind
 {}",
             out.1
         ),

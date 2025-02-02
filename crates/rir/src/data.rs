@@ -14,6 +14,7 @@ pub struct Registers {
     pub variables: HashMap<String, Variable>,
     pub sections: HashMap<String, Section>,
     pub functions: HashMap<String, Function>,
+    pub extra_header_ir: String,
 }
 
 macro_rules! llvm_function {
@@ -38,11 +39,16 @@ impl Default for Registers {
 
                 llvm_function!(declare i32 @puts(("i8*".to_string(), String::new())) >> out);
                 llvm_function!(declare i32 @printf(("i8*".to_string(), String::new())) >> out);
+
                 llvm_function!(declare i32 @strcat(("i8*".to_string(), String::new()), ("i8*".to_string(), String::new())) >> out);
                 llvm_function!(declare i32 @strcpy(("i8*".to_string(), String::new()), ("i8*".to_string(), String::new())) >> out);
 
+                llvm_function!(declare ptr @malloc(("i32".to_string(), String::new())) >> out);
+                llvm_function!(declare void @free(("i8*".to_string(), String::new())) >> out);
+
                 out
             },
+            extra_header_ir: String::new(),
         }
     }
 }
@@ -151,6 +157,8 @@ pub enum Operation {
     Call((String, String)),
     /// Raw LLVM IR.
     Ir(String),
+    /// Raw LLVM IR (head).
+    HeadIr(String),
     /// Read variable memory.
     Read(String),
 }
@@ -164,7 +172,8 @@ impl ToIr for Operation {
                 if var.r#type == "string" {
                     return (
                         format!(
-                            "@.s_{ident} = constant [{} x i8] c\"{}\\00\\00\", align 1",
+                            "@.s_{ident}_{} = constant [{} x i8] c\"{}\\00\\00\", align 1",
+                            var.key,
                             var.size,
                             {
                                 let mut val = var.value.clone();
@@ -174,8 +183,8 @@ impl ToIr for Operation {
                             }
                         ),
                         format!(
-                            "%{ident}.addr = getelementptr [{} x i8],[{} x i8]* @.s_{ident}, i64 0, i64 0",
-                            var.size, var.size
+                            "%{ident}.addr = getelementptr [{} x i8],[{} x i8]* @.s_{ident}_{}, i64 0, i64 0",
+                            var.size, var.size, var.key,
                         ),
                     );
                 } else if var.r#type == "faraday::no_alloca" {
@@ -216,9 +225,12 @@ impl ToIr for Operation {
                     if !var.prefix.is_empty() {
                         // call
                         format!(
-                            "{}store {} %k_{}, ptr %{ident}.addr, align 4
-store ptr %{ident}, ptr %k_{}, align 4",
-                            var.prefix, var.r#type, var.key, var.key
+                            "{}store {} %k_{}, ptr %{ident}.addr, align 4",
+                            // store ptr %{ident}, ptr %k_{}, align 4",
+                            var.prefix,
+                            var.r#type,
+                            var.key,
+                            // var.key
                         )
                         .replace("__VALUE_INSTEAD", &val)
                     } else {
@@ -235,6 +247,7 @@ store ptr %{ident}, ptr %k_{}, align 4",
                 )
             }
             Ir(data) => (String::new(), data.trim().to_owned()),
+            HeadIr(data) => (data.trim().to_owned(), String::new()),
             Read(ident) => {
                 let var = registers.get_var_mut(ident);
 

@@ -1,0 +1,12 @@
+#include "util.rr"
+
+i32 main() {
+    ptr pointer_to_mem = malloc(5)
+    *pointer_to_mem // read/write the poinnter
+    printn("allocated memory"<18>)
+
+    free(pointer_to_mem)
+    printn("memory freed"<14>)
+
+    return 0@i32
+}
