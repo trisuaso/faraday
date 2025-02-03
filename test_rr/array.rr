@@ -1,7 +1,7 @@
 #include "util.rr"
 
 i32 main() {
-    5<16> i32 a = void
+    5 i32 a = void
 
     awrite(a, 5, 0)
     aread(a, 0)

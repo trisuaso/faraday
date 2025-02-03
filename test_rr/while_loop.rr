@@ -1,0 +1,15 @@
+#include "util.rr"
+
+i32 main() {
+    i32 i = 0
+
+    while (i < 10) {
+        printn("less than 10"<14>)
+        peak(i, ix)
+        print_num(ix)
+        addset(i, 1)
+    }
+
+    print_num(10)
+    return 0
+}

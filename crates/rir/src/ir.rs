@@ -336,6 +336,22 @@ pub fn root_function_call<'a>(
                 )));
             }
         }
+        // addset: add `x` to `ident` and update its value
+        "addset" => {
+            let var_ident = inner.next().unwrap().as_str();
+            let var = registers.get_var(var_ident);
+
+            inner.next(); // skip
+            let val = inner.next().unwrap().as_str();
+
+            let r = random();
+            operations.push(Operation::Ir(format!(
+                "%k_{r}_v = load i32, ptr %{}.addr
+%k_{r} = add nsw i32 %k_{r}_v, {val}
+store i32 %k_{r}, ptr %{}.addr, align {}",
+                var.label, var.label, var.align
+            )));
+        }
         // everything user-defined
         _ => {
             let fun = registers.get_function(sub_function).clone();
@@ -595,6 +611,7 @@ pub fn for_loop<'a>(
     // progress the iteration. The ending block contains everything
     // that comes AFTER the loop.
     let mut loop_inner = pair.into_inner();
+
     // block names
     let key = random();
     let block_cond = format!("bb_cond_{key}");
@@ -629,11 +646,11 @@ pub fn for_loop<'a>(
 
     operations.push(Operation::Ir(format!(
         "{block_cond}:
-%{var_name}_{cond_key} = load {}, ptr %{var_name}.addr, align 4
+%{var_name}_{cond_key} = load {}, ptr %{var_name}.addr, align {}
 {prefix}
 %{var_name}_cmp_{cond_key} = icmp {op} {} %{var_name}_{cond_key}, {value}
 br i1 %{var_name}_cmp_{cond_key}, label %{block_body}, label %{block_end}",
-        var.r#type, var.r#type
+        var.r#type, var.align, var.r#type
     )));
 
     // body
@@ -656,11 +673,11 @@ br i1 %{var_name}_cmp_{cond_key}, label %{block_body}, label %{block_end}",
     let inc_key = random();
     operations.push(Operation::Ir(format!(
         "{block_inc}:
-%{var_name}_{inc_key} = load {}, ptr %{var_name}.addr, align 4
+%{var_name}_{inc_key} = load {}, ptr %{var_name}.addr, align {}
 %{var_name}_inc_{inc_key} = add nsw i32 %{var_name}_{inc_key}, 1
-store i32 %{var_name}_inc_{inc_key}, ptr %{var_name}.addr, align 4
+store i32 %{var_name}_inc_{inc_key}, ptr %{var_name}.addr, align {}
 br label %{block_cond}",
-        var.r#type
+        var.r#type, var.align, var.align
     )));
 
     // end
@@ -668,7 +685,101 @@ br label %{block_cond}",
     let res = crate::process(input, file_specifier, scoped_regs); // capture everything left in `input`
 
     for operation in res.1 {
+        match operation {
+            Operation::HeadIr(_) => continue,
+            _ => operations.push(operation),
+        }
+    }
+
+    return (res.0, operations);
+}
+
+/// [`Operation`] generation for a while loop.
+pub fn while_loop<'a>(
+    input: ParserPairs,
+    pair: Pair<'a, Rule>,
+    file_specifier: &str,
+    mut operations: Vec<Operation>,
+    registers: &mut Registers,
+) -> (Registers, Vec<Operation>) {
+    // basically just a modified for loop
+    let mut loop_inner = pair.into_inner();
+
+    // block names
+    let key = random();
+    let block_cond = format!("bb_cond_{key}");
+    let block_body = format!("bb_body_{key}");
+    let block_end = format!("bb_end_{key}");
+
+    // head
+    let scoped_regs = registers.clone(); // create new scope
+    operations.push(Operation::Ir(format!("br label %{block_cond}")));
+
+    // cond
+    operations.push(Operation::Ir(format!("{block_cond}:")));
+    let mut conditional_inner = loop_inner.next().unwrap().into_inner();
+
+    let lhs = conditional_inner.next().unwrap();
+    let lhs = match lhs.as_rule() {
+        Rule::identifier => {
+            let r = random();
+            let var = registers.get_var(lhs.as_str());
+            operations.push(Operation::Ir(format!(
+                "%k_{r} = load i32, ptr %{}.addr, align {}",
+                var.label, var.align
+            )));
+            format!("%k_{r}")
+        }
+        _ => lhs.as_str().to_string(),
+    };
+
+    let op = rule_to_operator(conditional_inner.next().unwrap().as_rule());
+
+    let rhs = conditional_inner.next().unwrap();
+    let rhs = match rhs.as_rule() {
+        Rule::identifier => {
+            let r = random();
+            let var = registers.get_var(rhs.as_str());
+            operations.push(Operation::Ir(format!(
+                "%k_{r} = load i32, ptr %{}.addr, align {}",
+                var.label, var.align
+            )));
+            format!("%k_{r}")
+        }
+        _ => rhs.as_str().to_string(),
+    };
+
+    let r = random();
+    operations.push(Operation::Ir(format!(
+        "%k_cmp_{r} = icmp {op} i32 {lhs}, {rhs}
+br i1 %k_cmp_{r}, label %{block_body}, label %{block_end}",
+    )));
+
+    // body
+    let block = loop_inner.next().unwrap().into_inner();
+    operations.push(Operation::Ir(format!("{block_body}:")));
+    let res = crate::process(block, file_specifier, scoped_regs);
+
+    for operation in res.1 {
         operations.push(operation);
+    }
+
+    let scoped_regs = res.0; // use updated version of scoped_regs
+    registers
+        .extra_header_ir
+        .push_str(&scoped_regs.extra_header_ir); // make sure header stuff is still global
+
+    operations.push(Operation::Ir(format!("br label %{block_cond}")));
+
+    // end
+    operations.push(Operation::Ir(format!("{block_end}:")));
+    let res = crate::process(input, file_specifier, scoped_regs); // capture everything left in `input`
+
+    for operation in res.1 {
+        match operation {
+            Operation::HeadIr(_) => continue,
+            _ => operations.push(operation),
+        }
     }
 
     return (res.0, operations);

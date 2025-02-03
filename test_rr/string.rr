@@ -1,7 +1,7 @@
 #include "util.rr"
 
 i32 main() {
-    100<16> i8 c = void
+    100 i8 c = void
     string a = "Hello, world!"
     string b = " Test"
 

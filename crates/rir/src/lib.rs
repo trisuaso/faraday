@@ -3,7 +3,9 @@ pub mod ir;
 pub mod macros;
 pub mod parser;
 
-use ir::{fn_return, for_loop, llvm_ir, root_function_call, var_assign, var_assign_no_alloca};
+use ir::{
+    fn_return, for_loop, llvm_ir, root_function_call, var_assign, var_assign_no_alloca, while_loop,
+};
 use macros::icompiler_error;
 use parser::{InstructionParser, Pairs, Parser, Rule};
 pub type ParserPairs<'a> = Pairs<'a, Rule>;
@@ -183,6 +185,9 @@ pub fn process<'a>(
             Rule::r#return => operations.push(Operation::Ir(format!("ret {}", fn_return(pair)))),
             Rule::for_loop => {
                 return for_loop(input, pair, file_specifier, operations, &mut registers);
+            }
+            Rule::while_loop => {
+                return while_loop(input, pair, file_specifier, operations, &mut registers);
             }
             Rule::EOI => break,
             _ => icompiler_error!("reached unexpected token: {rule:?}"),
