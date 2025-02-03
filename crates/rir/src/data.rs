@@ -135,7 +135,7 @@ macro_rules! merge_registers {
 /// ```text
 /// #do BitAnd(0, 1, branch_then, branch_else, branch_else_if)
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Operation {
     /// Assign a variable.
     ///

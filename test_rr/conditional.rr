@@ -1,3 +1,32 @@
+#include "util.rr"
+
 i32 main() {
-    return 0
+    i32 a = 5
+    i32 b = 10
+
+    if((a == b), matching, elseif) // the elseif block will be used as the else block here instead
+
+    <matching> {
+        printn("matching"<10>)
+        jump(end)
+    }
+
+    <elseif> {
+        // this block ONLY contains the next conditional segment
+        if((a >= 100), elseif_body, else) // finally, we can actually jump to the else block
+    }
+
+    <elseif_body> {
+        printn("matching (greater than/equal to 100)"<38>)
+        jump(end)
+    }
+
+    <else> {
+        printn("not matching"<14>)
+        jump(end)
+    }
+
+    <end> {
+        return 0
+    }
 }

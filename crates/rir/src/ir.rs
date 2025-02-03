@@ -26,6 +26,8 @@ pub fn rule_to_operator<'a>(rule: Rule) -> &'a str {
         Rule::LESS_THAN_EQUAL_TO => "sle",
         Rule::NOT_EQUAL => "ne",
         Rule::EQUAL => "eq",
+        Rule::OR => "or",
+        Rule::AND => "and",
         _ => "void",
     }
 }
@@ -133,6 +135,213 @@ pub fn fn_call<'a>(
     }
 
     Operation::Call((ident, args_string))
+}
+
+/// [`Operation`] generation for function calls.
+pub fn root_function_call<'a>(
+    pair: Pair<'a, Rule>,
+    operations: &mut Vec<Operation>,
+    registers: &mut Registers,
+) {
+    let mut inner = pair.into_inner();
+    let sub_function = inner.next().unwrap().as_str();
+    match sub_function {
+        // jump: jump to section
+        "jump" => {
+            // get section name and process section
+            let section_name = inner.next().unwrap().as_str();
+            operations.push(Operation::Jump(section_name.to_string()));
+        }
+        // decay: create C array decay from variable
+        // variable should be `alloca [100 * i8]`
+        "decay" => {
+            let ident = inner.next().unwrap().as_str();
+
+            registers
+                .variables
+                .insert(format!("{ident}.decay"), Variable {
+                    prefix: String::new(),
+                    label: format!("{ident}.decay"),
+                    size: 100,
+                    align: 16,
+                    value: String::new(),
+                    r#type: "ptr".to_string(),
+                    key: random(),
+                });
+
+            operations.push(Operation::Ir(format!("%{ident}.decay = getelementptr inbounds [100 x i8], ptr %{ident}.addr, i64 0, i64 0")));
+        }
+        // awrite: write to an array variable
+        //
+        // # Example
+        // ```text
+        // awrite(ident, value, idx...)
+        // ```
+        "awrite" => {
+            // get variable
+            let ident = inner.next().unwrap().as_str().to_string();
+
+            let var = registers.get_var(&ident);
+            let r#type = var.r#type;
+
+            // get value
+            inner.next();
+            let value = inner.next().unwrap();
+            let value = match value.as_rule() {
+                _ => value.as_str().to_string(),
+            };
+
+            // build index pointers
+            let mut index_access_ir = String::new();
+
+            let mut indexes_suffix_string: String = String::new();
+            let mut last_index_variable: String = String::new();
+
+            while let Some(pair) = inner.next() {
+                if pair.as_rule() != Rule::call_param {
+                    continue;
+                }
+
+                let idx = pair.as_str();
+                indexes_suffix_string.push_str(&format!(".{idx}")); // this keeps the variable naming predictable
+                last_index_variable = random();
+
+                index_access_ir.push_str(&format!("%arridx_{last_index_variable} = getelementptr inbounds [{idx} x {type}], ptr %{}.addr, i64 0, i64 {idx}", var.label));
+            }
+
+            // ...
+            operations.push(Operation::Ir(format!(
+                "{index_access_ir}\nstore {type} {value}, ptr %arridx_{last_index_variable}, align 8"
+            )));
+        }
+        // aread: read from an array
+        //
+        // # Example
+        // ```test
+        // aread(ident, idx...)
+        // ```
+        //
+        // # Returns
+        // Defines `ident.index.index...` variable.
+        "aread" => {
+            // C does array access by generating variables which
+            // use getelementptr inbounds to access fields to read and write
+            let var_ident = inner.next().unwrap().as_str();
+            let var = registers.get_var(var_ident);
+
+            // build index pointers
+            let mut index_access_ir = String::new();
+
+            let mut indexes_suffix_string: String = String::new();
+            let mut last_index_variable: String = String::new();
+
+            while let Some(pair) = inner.next() {
+                if pair.as_rule() != Rule::call_param {
+                    continue;
+                }
+
+                let idx = pair.as_str();
+                indexes_suffix_string.push_str(&format!(".{idx}")); // this keeps the variable naming predictable
+                last_index_variable = random();
+
+                index_access_ir.push_str(&format!("%arridx_{last_index_variable} = getelementptr inbounds [{idx} x {}], ptr %{var_ident}.addr, i64 0, i64 {idx}", var.r#type));
+            }
+
+            // ...
+            let name = format!("{}{indexes_suffix_string}", var.label);
+            operations.push(Operation::Ir(format!(
+                "{index_access_ir}\n%{name} = load {}, ptr %arridx_{last_index_variable}, align 8",
+                var.r#type
+            )));
+            registers
+                .variables
+                .insert(name.clone(), name.as_str().into());
+        }
+        // peak: read the value of a variable into a temporary variable
+        "peak" => {
+            let var_ident = inner.next().unwrap().as_str();
+
+            inner.next(); // skip
+            let bind_as_name = inner.next().unwrap().as_str();
+
+            let var = registers.get_var(var_ident);
+
+            operations.push(Operation::Ir(format!(
+                "%{bind_as_name} = load {}, ptr %{}.addr, align 4",
+                var.r#type, var.label
+            )));
+
+            registers
+                .variables
+                .insert(bind_as_name.to_string(), bind_as_name.into());
+        }
+        // if: compare 2 values
+        "if" => {
+            let mut conditional_inner = inner
+                .next()
+                .unwrap()
+                .into_inner()
+                .next()
+                .unwrap()
+                .into_inner()
+                .next()
+                .unwrap()
+                .into_inner();
+
+            let lhs = conditional_inner.next().unwrap();
+            let lhs = match lhs.as_rule() {
+                Rule::identifier => {
+                    let r = random();
+                    let var = registers.get_var(lhs.as_str());
+                    operations.push(Operation::Ir(format!(
+                        "%k_{r} = load i32, ptr %{}.addr, align 4",
+                        var.label
+                    )));
+                    format!("%k_{r}")
+                }
+                _ => lhs.as_str().to_string(),
+            };
+
+            let op = rule_to_operator(conditional_inner.next().unwrap().as_rule());
+
+            let rhs = conditional_inner.next().unwrap();
+            let rhs = match rhs.as_rule() {
+                Rule::identifier => {
+                    let r = random();
+                    let var = registers.get_var(rhs.as_str());
+                    operations.push(Operation::Ir(format!(
+                        "%k_{r} = load i32, ptr %{}.addr, align 4",
+                        var.label
+                    )));
+                    format!("%k_{r}")
+                }
+                _ => rhs.as_str().to_string(),
+            };
+
+            inner.next(); // skip
+            let goto = inner.next().unwrap().as_str();
+            if let Some(_) = inner.next() {
+                // ^ skip
+                let goto_next = inner.next().unwrap().as_str();
+                // has else block
+                let r = random();
+                operations.push(Operation::Ir(format!(
+                    "%k_cmp_{r} = icmp {op} i32 {lhs}, {rhs}\nbr i1 %k_cmp_{r}, label %{goto}, label %{goto_next}"
+                )));
+            } else {
+                // doesn't have else block
+                let r = random();
+                operations.push(Operation::Ir(format!(
+                    "%k_cmp_{r} = icmp {op} i32 {lhs}, {rhs}\nbr i1 %k_cmp_{r}, label %{goto}"
+                )));
+            }
+        }
+        // everything user-defined
+        _ => {
+            let fun = registers.get_function(sub_function).clone();
+            operations.push(fn_call(sub_function.to_string(), inner, registers, &fun));
+        }
+    }
 }
 
 /// [`Operation`] generation for a function return.
@@ -369,4 +578,98 @@ pub fn var_assign_no_alloca(
         .insert(format!("{ident}.addr"), ident.as_str().into());
 
     operations.push(Operation::Assign(ident.clone()));
+}
+
+/// [`Operation`] generation for a for loop.
+pub fn for_loop<'a>(
+    input: ParserPairs,
+    pair: Pair<'a, Rule>,
+    file_specifier: &str,
+    mut operations: Vec<Operation>,
+    registers: &mut Registers,
+) -> (Registers, Vec<Operation>) {
+    // we're going to implement this basically the same way Clang does,
+    // we'll assign a variable with a default value, jump to a conditional
+    // block, and then jump to either a body or ending block. If we jumped
+    // to the body block, we need to jump to the increase block at the end to
+    // progress the iteration. The ending block contains everything
+    // that comes AFTER the loop.
+    let mut loop_inner = pair.into_inner();
+    // block names
+    let key = random();
+    let block_cond = format!("bb_cond_{key}");
+    let block_body = format!("bb_body_{key}");
+    let block_inc = format!("bb_inc_{key}");
+    let block_end = format!("bb_end_{key}");
+
+    // head
+    let pair = loop_inner.next().unwrap();
+    let mut scoped_regs = registers.clone(); // create new scope
+
+    let var_name = format!("k_{key}");
+    let var_label = var_assign(
+        var_name.clone(),
+        pair.into_inner(),
+        &mut operations,
+        &mut scoped_regs,
+    );
+    let var = scoped_regs.get_var(&var_label);
+    operations.push(Operation::Ir(format!("br label %{block_cond}")));
+
+    // cond
+    let cond_key = random();
+
+    let mut comparison = loop_inner.next().unwrap().into_inner();
+    comparison.next(); // skip since this is just var_name
+
+    let op = rule_to_operator(comparison.next().unwrap().as_rule());
+    let value = Value::get(comparison.next().unwrap(), &cond_key, &mut scoped_regs).0;
+    let prefix = value.1;
+    let value = value.0;
+
+    operations.push(Operation::Ir(format!(
+        "{block_cond}:
+%{var_name}_{cond_key} = load {}, ptr %{var_name}.addr, align 4
+{prefix}
+%{var_name}_cmp_{cond_key} = icmp {op} {} %{var_name}_{cond_key}, {value}
+br i1 %{var_name}_cmp_{cond_key}, label %{block_body}, label %{block_end}",
+        var.r#type, var.r#type
+    )));
+
+    // body
+    let block = loop_inner.next().unwrap().into_inner();
+    operations.push(Operation::Ir(format!("{block_body}:")));
+    let res = crate::process(block, file_specifier, scoped_regs);
+
+    for operation in res.1 {
+        operations.push(operation);
+    }
+
+    let scoped_regs = res.0; // use updated version of scoped_regs
+    registers
+        .extra_header_ir
+        .push_str(&scoped_regs.extra_header_ir); // make sure header stuff is still global
+
+    operations.push(Operation::Ir(format!("br label %{block_inc}")));
+
+    // inc(rease)
+    let inc_key = random();
+    operations.push(Operation::Ir(format!(
+        "{block_inc}:
+%{var_name}_{inc_key} = load {}, ptr %{var_name}.addr, align 4
+%{var_name}_inc_{inc_key} = add nsw i32 %{var_name}_{inc_key}, 1
+store i32 %{var_name}_inc_{inc_key}, ptr %{var_name}.addr, align 4
+br label %{block_cond}",
+        var.r#type
+    )));
+
+    // end
+    operations.push(Operation::Ir(format!("{block_end}:")));
+    let res = crate::process(input, file_specifier, scoped_regs); // capture everything left in `input`
+
+    for operation in res.1 {
+        operations.push(operation);
+    }
+
+    return (res.0, operations);
 }

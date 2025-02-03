@@ -56,10 +56,10 @@ NOT_EQUAL             = { "!=" }
 EQUAL                 = { "==" }
 AND                   = { "&&" }
 OR                    = { "||" }
-comparison            = { value ~ (GREATER_THAN | LESS_THAN | GREATER_THAN_EQUAL_TO | LESS_THAN_EQUAL_TO | NOT_EQUAL | EQUAL | AND | OR) ~ value }
+comparison            = { value ~ (GREATER_THAN_EQUAL_TO | LESS_THAN_EQUAL_TO | GREATER_THAN | LESS_THAN | NOT_EQUAL | EQUAL | AND | OR) ~ value }
 
 for_loop           = { "for" ~ "(" ~ pair ~ ";" ~ comparison ~ ")" ~ block }
 while_loop         = { "while" ~ "(" ~ value ~ ")" ~ block }
-conditional        = { "if" ~ "(" ~ value ~ ")" ~ block ~ (conditional_elseif | conditional_else)* }
+conditional        = { "if" ~ comparison ~ block ~ (conditional_elseif | conditional_else)* }
 conditional_else   = { "else" ~ block }
-conditional_elseif = { "else if" ~ "(" ~ value ~ ")" ~ block }
+conditional_elseif = { "else if" ~ comparison ~ block }
