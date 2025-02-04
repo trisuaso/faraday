@@ -101,7 +101,7 @@ pub fn process<'a>(
 
                 let ret_type = inner.next().unwrap().as_str().to_string();
                 let ident = inner.next().unwrap().as_str().to_string();
-                let mut args: Vec<(String, String)> = Vec::new();
+                let mut args: Vec<(String, String, String)> = Vec::new();
 
                 while let Some(pair) = inner.next() {
                     match pair.as_rule() {
@@ -112,7 +112,9 @@ pub fn process<'a>(
                                 // type
                                 inner.next().unwrap().as_str().to_string(),
                                 // name
-                                format!("%{}", inner.next().unwrap().as_str()),
+                                inner.next().unwrap().as_str().to_string(),
+                                // fake name
+                                random(),
                             ));
                         }
                         Rule::block => {
@@ -124,8 +126,11 @@ pub fn process<'a>(
 
                                     for var in &args {
                                         let ident = var.1.replacen("%", "", 1);
-                                        regs.variables
-                                            .insert(ident.to_string(), ident.as_str().into());
+                                        regs.variables.insert(ident.to_string(), {
+                                            let mut var_: Variable = ident.as_str().into();
+                                            var_.label = var.2.clone();
+                                            var_
+                                        });
                                     }
 
                                     regs
@@ -182,7 +187,10 @@ pub fn process<'a>(
                 operations.push(Operation::Read(ident.to_string()));
             }
             Rule::llvm_ir => operations.push(llvm_ir(pair.into_inner())),
-            Rule::r#return => operations.push(Operation::Ir(format!("ret {}", fn_return(pair)))),
+            Rule::r#return => operations.push(Operation::Ir(format!(
+                "ret {}",
+                fn_return(pair, &registers)
+            ))),
             Rule::for_loop => {
                 return for_loop(input, pair, file_specifier, operations, &mut registers);
             }
@@ -206,6 +214,7 @@ macro_rules! define {
         $registers.variables.insert($name.to_string(), Variable {
             prefix: String::new(),
             label: $name.to_string(),
+            ident: $name.to_string(),
             r#type: "void".to_string(),
             value: $value.to_string(),
             size: 0,

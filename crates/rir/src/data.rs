@@ -37,14 +37,14 @@ impl Default for Registers {
             functions: {
                 let mut out = HashMap::new();
 
-                llvm_function!(declare i32 @puts(("i8*".to_string(), String::new())) >> out);
-                llvm_function!(declare i32 @printf(("i8*".to_string(), String::new())) >> out);
+                llvm_function!(declare i32 @puts(("i8*".to_string(), String::new(), String::new())) >> out);
+                llvm_function!(declare i32 @printf(("i8*".to_string(), String::new(), String::new())) >> out);
 
-                llvm_function!(declare i32 @strcat(("i8*".to_string(), String::new()), ("i8*".to_string(), String::new())) >> out);
-                llvm_function!(declare i32 @strcpy(("i8*".to_string(), String::new()), ("i8*".to_string(), String::new())) >> out);
+                llvm_function!(declare i32 @strcat(("i8*".to_string(), String::new(), String::new()), ("i8*".to_string(), String::new(), String::new())) >> out);
+                llvm_function!(declare i32 @strcpy(("i8*".to_string(), String::new(), String::new()), ("i8*".to_string(), String::new(), String::new())) >> out);
 
-                llvm_function!(declare ptr @malloc(("i32".to_string(), String::new())) >> out);
-                llvm_function!(declare void @free(("i8*".to_string(), String::new())) >> out);
+                llvm_function!(declare ptr @malloc(("i32".to_string(), String::new(), String::new())) >> out);
+                llvm_function!(declare void @free(("i8*".to_string(), String::new(), String::new())) >> out);
 
                 out
             },
@@ -190,8 +190,8 @@ impl ToIr for Operation {
                             }
                         ),
                         format!(
-                            "%{}.addr = getelementptr [{} x i8],[{} x i8]* @.s_{ident}_{}, i64 0, i64 0",
-                            var.label, var.size, var.size, var.key,
+                            "%{}.addr = getelementptr [{} x i8],[{} x i8]* @.s_{}_{}, i64 0, i64 0",
+                            var.label, var.size, var.size, var.label, var.key
                         ),
                     );
                 } else if var.r#type == "faraday::no_alloca" {
@@ -299,21 +299,22 @@ pub struct Function {
     pub ident: String,
     pub ret_type: String,
     /// variable names are their arg index
-    pub args: Vec<(String, String)>,
+    pub args: Vec<(String, String, String)>,
     pub operations: Vec<Operation>,
 }
 
 impl ToIr for Function {
     fn transform(&self, registers: &mut Registers) -> (String, String) {
         let mut parameters: String = String::new();
+        let mut scoped_regs = registers.clone();
 
-        for (i, (t, param)) in self.args.iter().enumerate() {
+        for (i, (t, _, param)) in self.args.iter().enumerate() {
             if i == self.args.len() - 1 {
                 // last
-                parameters.push_str(&format!("{t} {param}"));
+                parameters.push_str(&format!("{t} %k_{}", param));
             } else {
                 // not last
-                parameters.push_str(&format!("{t} {param}, "));
+                parameters.push_str(&format!("{t} %k_{}, ", param));
             }
         }
 
@@ -325,7 +326,7 @@ impl ToIr for Function {
         );
 
         for op in &self.operations {
-            let data = op.transform(registers);
+            let data = op.transform(&mut scoped_regs);
 
             root_out.push_str(&format!("{}\n", data.0));
             out.push_str(&format!("    {}\n", data.1.replace("\n", "\n    ")));
@@ -350,7 +351,10 @@ impl ToIr for Function {
 #[derive(Clone, Debug)]
 pub struct Variable {
     pub prefix: String,
+    /// Random name used in the IR to prevent collisions.
     pub label: String,
+    /// The real identifier of the variable. Not guarunteed to be correct.
+    pub ident: String,
     pub size: usize,
     pub align: i32,
     pub value: String,
@@ -363,12 +367,13 @@ impl From<&str> for Variable {
     fn from(value: &str) -> Self {
         Self {
             prefix: String::new(),
-            label: value.to_string(),
+            label: crate::random(),
+            ident: value.to_string(),
             size: 0,
             align: 4,
             value: value.to_string(),
             r#type: "void".to_string(),
-            key: String::new(),
+            key: crate::random(),
         }
     }
 }

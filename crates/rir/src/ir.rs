@@ -74,7 +74,7 @@ pub fn fn_call<'a>(
                                     r#type = "ptr".to_string();
                                 } else {
                                     // normal variable
-                                    value = format!("%{}", var.label)
+                                    value = format!("%k_{}", var.label.replacen("k_", "", 1))
                                 }
                             } else {
                                 // fill type
@@ -156,12 +156,14 @@ pub fn root_function_call<'a>(
         // variable should be `alloca [100 * i8]`
         "decay" => {
             let ident = inner.next().unwrap().as_str();
+            let var = registers.get_var(ident);
 
             registers
                 .variables
                 .insert(format!("{ident}.decay"), Variable {
                     prefix: String::new(),
                     label: format!("{ident}.decay"),
+                    ident: format!("{ident}.decay"),
                     size: 100,
                     align: 16,
                     value: String::new(),
@@ -169,7 +171,10 @@ pub fn root_function_call<'a>(
                     key: random(),
                 });
 
-            operations.push(Operation::Ir(format!("%{ident}.decay = getelementptr inbounds [100 x i8], ptr %{ident}.addr, i64 0, i64 0")));
+            operations.push(Operation::Ir(format!(
+                "%k_{ident}.decay = getelementptr inbounds [100 x i8], ptr %{}.addr, i64 0, i64 0",
+                var.label
+            )));
         }
         // awrite: write to an array variable
         //
@@ -248,7 +253,7 @@ pub fn root_function_call<'a>(
             }
 
             // ...
-            let name = format!("{}{indexes_suffix_string}", var.label);
+            let name = format!("{}{indexes_suffix_string}", var.ident);
             operations.push(Operation::Ir(format!(
                 "{index_access_ir}\n%{name} = load {}, ptr %arridx_{last_index_variable}, align 8",
                 var.r#type
@@ -265,15 +270,16 @@ pub fn root_function_call<'a>(
             let bind_as_name = inner.next().unwrap().as_str();
 
             let var = registers.get_var(var_ident);
+            let bind_var: Variable = bind_as_name.into();
 
             operations.push(Operation::Ir(format!(
-                "%{bind_as_name} = load {}, ptr %{}.addr, align 4",
-                var.r#type, var.label
+                "%k_{} = load {}, ptr %{}.addr, align 4",
+                bind_var.label, var.r#type, var.label
             )));
 
             registers
                 .variables
-                .insert(bind_as_name.to_string(), bind_as_name.into());
+                .insert(bind_as_name.to_string(), bind_var);
         }
         // if: compare 2 values
         "if" => {
@@ -361,7 +367,7 @@ store i32 %k_{r}, ptr %{}.addr, align {}",
 }
 
 /// [`Operation`] generation for a function return.
-pub fn fn_return<'a>(pair: Pair<'a, Rule>) -> String {
+pub fn fn_return<'a>(pair: Pair<'a, Rule>, regs: &Registers) -> String {
     let pair = pair.into_inner().next().unwrap();
     match pair.as_rule() {
         Rule::llvm_ir => match llvm_ir(pair.into_inner()) {
@@ -375,7 +381,8 @@ pub fn fn_return<'a>(pair: Pair<'a, Rule>) -> String {
             let value = inner.next().unwrap();
             let value = match value.as_rule() {
                 Rule::identifier => {
-                    format!("%{}", value.as_str().to_string())
+                    let var = regs.get_var(value.as_str());
+                    format!("%k_{}", var.label)
                 }
                 _ => {
                     r#type = rule_to_type(value.as_rule());
@@ -486,7 +493,7 @@ pub fn var_assign(
                 if ident.is_empty() {
                     let content = pair.as_str();
                     label = content.to_string();
-                    ident = content.to_string()
+                    ident = format!("k_{}", random()) // use random variable name by default for avoid collision
                 } else if label.is_empty() {
                     label = pair.as_str().to_string();
                 } else {
@@ -531,6 +538,7 @@ pub fn var_assign(
             prefix.clone()
         },
         label: ident.clone(),
+        ident: label.clone(),
         size,
         align,
         value: value.clone(),
@@ -557,6 +565,7 @@ pub fn var_assign_no_alloca(
 ) {
     // alloc variable
     let mut ident: String = String::new();
+    let mut label: String = String::new();
     let mut value: String = String::new();
 
     while let Some(pair) = inner.next() {
@@ -564,7 +573,8 @@ pub fn var_assign_no_alloca(
         match rule {
             Rule::identifier => {
                 if ident.is_empty() {
-                    ident = pair.as_str().to_string()
+                    ident = format!("k_{}", random());
+                    label = pair.as_str().to_string()
                 } else {
                     value = pair.as_str().to_string()
                 }
@@ -579,9 +589,10 @@ pub fn var_assign_no_alloca(
         }
     }
 
-    registers.variables.insert(ident.clone(), Variable {
+    registers.variables.insert(label.clone(), Variable {
         prefix: String::new(),
         label: ident.clone(),
+        ident: label.clone(),
         size: 0,
         align: 4,
         value: value.clone(),
@@ -591,9 +602,9 @@ pub fn var_assign_no_alloca(
 
     registers
         .variables
-        .insert(format!("{ident}.addr"), ident.as_str().into());
+        .insert(format!("{label}.addr"), label.as_str().into());
 
-    operations.push(Operation::Assign(ident.clone()));
+    operations.push(Operation::Assign(label.clone()));
 }
 
 /// [`Operation`] generation for a for loop.
